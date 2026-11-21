@@ -55,7 +55,18 @@ function clearTeacherEdit(){editingTeacherId=null;$('teacherForm').reset();$('te
 $('teacherCancelEdit').addEventListener('click',clearTeacherEdit);
 $('teacherForm').addEventListener('submit',e=>{e.preventDefault();const data={name:$('tName').value.trim(),phone:$('tPhone').value.trim(),type:$('tType').value,zone:$('tZone').value.trim(),model:$('tModel').value.trim(),plate:$('tPlate').value.trim()};if(!data.name){alert('Ingresá el nombre del instructor.');return}if(editingTeacherId){const t=db.teachers.find(t=>t.id===editingTeacherId);if(!t){alert('No se encontró el instructor.');clearTeacherEdit();return}Object.assign(t,data)}else{db.teachers.push({id:crypto.randomUUID?crypto.randomUUID():String(Date.now()+Math.random()),...data})}save();clearTeacherEdit();teachers();render()});
 $('teacherTable').addEventListener('click',e=>{const edit=e.target.closest('[data-edit-teacher]');if(edit){const t=db.teachers.find(t=>t.id===edit.dataset.editTeacher);if(!t)return;editingTeacherId=t.id;$('tName').value=t.name||'';$('tPhone').value=t.phone||'';$('tType').value=t.type||'Manual';$('tZone').value=t.zone||'';$('tModel').value=t.model||'';$('tPlate').value=t.plate||'';$('teacherSaveBtn').textContent='Guardar cambios';$('teacherCancelEdit').classList.remove('hidden');$('teacherEditStatus').textContent='Editando a '+t.name+'. Los cursos y movimientos anteriores se conservarán.';$('teacherEditStatus').classList.remove('hidden');$('teacherForm').scrollIntoView({behavior:'smooth',block:'start'});return}const remove=e.target.closest('[data-remove-teacher]');if(!remove)return;const id=remove.dataset.removeTeacher;if(db.records.some(r=>r.teacherId===id)){alert('Este instructor tiene cursos registrados. Para preservar el historial no se puede quitar.');return}if(confirm('¿Quitar instructor?')){db.teachers=db.teachers.filter(t=>t.id!==id);if(editingTeacherId===id)clearTeacherEdit();save();teachers()}});
-function normalizeImport(s){return String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim()}function cleanWhatsAppHeader(input){return String(input||'').replace(/\r/g,'').split('\n').map(line=>{let t=line.trim();const m=t.match(/^\[?\s*\d{1,2}[\/.-]\d{1,2}(?:[\/.-]\d{2,4})?\s*,?\s+\d{1,2}:\d{2}(?::\d{2})?\s*(?:[ap]\s*\.?\s*m\.?)?\s*\]?\s*(?:[-–]\s*)?/i);if(m){t=t.slice(m[0].length).trim();t=t.replace(/^[^:\n]{1,100}:\s*/, '')}return t}).filter(x=>x&&!/^reenviado(?: muchas veces)?$/i.test(x)).join('\n').trim()}
+function normalizeImport(s){return String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim()}function cleanWhatsAppHeader(input){return String(input||'').replace(/\r/g,'').split('\n').map(line=>{
+ let t=line.trim();
+ // WhatsApp exports: [21/11, 5:31 p.m.] Sebastian 🌞: texto
+ if(/^\[\d{1,2}\/\d{1,2}/.test(t)){
+  const close=t.indexOf(']');
+  if(close>=0){t=t.slice(close+1).trim();t=t.replace(/^[^:]{1,100}:\s*/, '');}
+ }else{
+  const m=t.match(/^\d{1,2}\/\d{1,2}(?:\/\d{2,4})?,?\s+\d{1,2}:\d{2}[^:]*?\s+[^:]{1,80}:\s*/);
+  if(m)t=t.slice(m[0].length);
+ }
+ return t;
+}).filter(x=>x&&!/^reenviado(?: muchas veces)?$/i.test(x)).join('\n').trim()}
 function cleanStudentName(v){return cleanWhatsAppHeader(v).replace(/^(?:nombre(?: y apellido)?|alumno)\s*:\s*/i,'').trim()}
 function parseIncomingWhatsApp(){const raw=cleanWhatsAppHeader($('whatsappImport').value);if(!raw){alert('Copiá el mensaje de WhatsApp primero.');return}const warnings=[];['student','phone','address','availableDays','availableHours','notes'].forEach(id=>$(id).value='');$('teacher').value='';$('school').value='';const parts=raw.split(/\s*\/\/\s*/).map(x=>x.trim()).filter(Boolean);const lines=raw.split(/\n/).map(x=>x.trim()).filter(Boolean);const normalized=normalizeImport(raw);const aliases=[['escuela argentina de manejo','Escuela Argentina de Manejo'],['escuela argentina','Escuela Argentina de Manejo'],['central cars','Central Cars'],['autoescuela modelo','Autoescuela Modelo'],['el club del manejo','El Club del Manejo'],['club del manejo','El Club del Manejo'],['central','Central Cars'],['modelo','Autoescuela Modelo'],['el club','El Club del Manejo'],['club','El Club del Manejo'],['eam','Escuela Argentina de Manejo'],['cc','Central Cars']];
 // La asignación se detecta por líneas, nunca por coincidencias parciales en el nombre del alumno.
@@ -69,9 +80,12 @@ const schoolAliases=[
 ];
 // Se admiten varios mensajes unidos; se priorizan líneas de asignación al final.
 const assignmentLines=lines.filter(line=>{
- const n=normalizeImport(line);
+ const n=normalizeImport(line).replace(/[.,;]+$/,'').trim();
+ // Solo líneas cortas de asignación: no confundir nombres del alumno o calles con instructores.
+ if(n.length>85 || /\d{3,}|\b(?:curso|disp|direccion|precio|saldo|seña|seno|debe|abon)\b/.test(n))return false;
  return schoolAliases.some(([,als])=>als.some(alias=>hasWord(n,alias))) || db.teachers.some(t=>{
-  const words=normalizeImport(t.name).split(/\s+/);return words[0].length>=3&&hasWord(n,words[0]);
+  const first=normalizeImport(t.name).split(/\s+/)[0];
+  return first.length>=3&&hasWord(n,first)&&n.split(/\s+/).length<=4;
  });
 });
 const hits=new Set();
@@ -89,12 +103,44 @@ for(const line of assignmentLines){
 }
 const teacher=teacherHits.length===1?teacherHits[0]:null;
 if(!teacher)warnings.push(teacherHits.length>1?'Instructor ambiguo: '+teacherHits.map(t=>t.name).join(' / '):'Instructor no identificado');
-const labelled=re=>{const m=raw.match(re);return m?m[1].trim():''};let student=cleanStudentName(labelled(/(?:nombre(?: y apellido)?|nombre del alumno|alumno)\s*:\s*([^\n/]+)/i)||(parts.length>=4?parts[0]:lines[0]||''));student=student.replace(/^(?:\[[^\]]+\]\s*)+/,'').trim();let phone=labelled(/(?:celular|tel[eé]fono(?:\s*\/\s*whatsapp)?|whatsapp)\s*:\s*([+\d\s()\-]{9,})/i)||(parts.length>=4?parts[1]:'');if(!phone){const m=raw.match(/(?:\+?\d[\d\s\-()]{8,}\d)/);if(m)phone=m[0]}let address=labelled(/direcci[oó]n(?: completa)?\s*:\s*([^\n]+)/i)||(parts.length>=4?parts[2]:'');let courseChunk=labelled(/curso\s*:\s*([^\n]+)/i)||(parts.length>=4?parts[3]:'');if(!courseChunk){const m=raw.match(/(?:extensi[oó]n|clase individual|auto(?:m[aá]tico)?|manual|moto)[^\n/]{0,70}(?:x|×)\s*\d+/i);if(m)courseChunk=m[0]}let availability=labelled(/disponibilidad(?:\s+de\s+d[ií]as)?\s*:\s*([^\n]+)/i)||(parts.find(x=>/disponibilidad\s*:/i.test(x))||'').replace(/^.*?disponibilidad\s*:\s*/i,'').trim();
-if(student&&student.length<95)$('student').value=student;else warnings.push('Revisá el nombre');if(phone)$('phone').value=phone;else warnings.push('Falta teléfono');if(address)$('address').value=address;else warnings.push('Falta dirección');if(school)$('school').value=school;else $('school').selectedIndex=-1;if(teacher)$('teacher').value=teacher.id;else $('teacher').value='';
-const n=normalizeImport(courseChunk);const count=(n.match(/(?:x|×|por|de)\s*(\d{1,2})\b/)||[])[1];let course='';if(count){const category=/extension/.test(n)?'Extensión ':/(?:individual|suelta)/.test(n)?'Clase individual ':'';if(/moto/.test(n)){const hits=TARIFFS.filter(t=>normalizeImport(t[0]).includes('moto')&&normalizeImport(t[0]).endsWith('x'+count));if(hits.length===1)course=hits[0][0]}else if(/automatic/.test(n))course=category+(category?'automático':'Automático')+' x'+count;else if(/auto|manual/.test(n))course=category+(category?'manual':'Manual')+' x'+count;course=course.replace(/\s+x/,' x')}if(course&&TARIFFS.some(t=>t[0].toLowerCase()===course.toLowerCase()))$('course').value=TARIFFS.find(t=>t[0].toLowerCase()===course.toLowerCase())[0];else warnings.push('Curso no reconocido');
-const payment=normalizeImport(courseChunk+' '+labelled(/(?:forma de pago|pago)\s*:\s*([^\n]+)/i));if(/transferencia|tarjeta|mercado pago|\bmp\b/.test(payment)){$('method').value='Tarjeta';$('balanceCollector').value='escuela'}else if(/efec|contado/.test(payment)){$('method').value='Efectivo';$('balanceCollector').value='instructor'}else warnings.push('Forma de pago no detectada');
-const days=labelled(/disponibilidad de d[ií]as\s*:\s*([^\n]+)/i);const hours=labelled(/disponibilidad de horarios\s*:\s*([^\n]+)/i);if(days)$('availableDays').value=days;if(hours)$('availableHours').value=hours;if(availability&&!days){const time=availability.match(/(?:de\s*)?\d{1,2}(?::\d{2})?\s*(?:a|hasta|-)\s*\d{1,2}(?::\d{2})?\s*(?:hs?|horas?)?/i);const qualitative=availability.match(/por la ma[ñn]ana|por la tarde|por la noche|mediod[ií]a|todo el d[ií]a/i);$('availableDays').value=availability.replace(time?.[0]||qualitative?.[0]||'','').replace(/[,;\s]+$/,'').trim()||availability;if(!hours)$('availableHours').value=(time?.[0]||qualitative?.[0]||'').trim()}if(!$('availableDays').value||!$('availableHours').value)warnings.push('Revisá disponibilidad');
-const deposit=raw.match(/(?:se[ñn]a(?:\s+recibida)?|reserva|abon[oó])\s*(?:de|por|\s*:\s*)?\s*\$?\s*([\d.]+)/i);$('hasDeposit').checked=!!deposit;$('deposit').disabled=!deposit;if(deposit)$('deposit').value=Number(deposit[1].replace(/\./g,''));const price=raw.match(/(?:precio(?: total)?|total(?:\s+del\s+curso)?)\s*:?\s*\$?\s*([\d.]+)/i);$('isPromo').checked=!!price;$('salePrice').disabled=!price;$('salePrice').value=price?Number(price[1].replace(/\./g,'')):'';
+const labelled=re=>{const m=raw.match(re);return m?m[1].trim():''};
+// Mensajes separados por una o dos barras, saltos de línea o encabezados de WhatsApp.
+const segments=raw.split(/\s*\/{1,2}\s*|\n/).map(x=>x.trim()).filter(Boolean);
+const first=segments[0]||'';
+let student=cleanStudentName(labelled(/(?:nombre(?: y apellido)?|nombre del alumno|alumno)\s*:\s*([^\n/]+)/i)||first).replace(/[\s/]+$/,'');
+let phone=labelled(/(?:celular|tel[eé]fono(?:\s*\/\s*whatsapp)?|whatsapp)\s*:\s*([+\d\s().-]{9,})/i);
+if(!phone){const segment=segments.find(x=>/^\+?[\d\s().-]{9,}$/.test(x)&&x.replace(/\D/g,'').length>=10);if(segment)phone=segment;}
+if(!phone){const m=raw.match(/(?:\+?\d[\d\s().-]{8,}\d)/);if(m)phone=m[0];}
+let address=labelled(/direcci[oó]n(?: completa)?\s*:\s*([^\n/]+)/i)||segments.find(x=>/\b(?:caba|flores|av\.?|calle|yerbal|san isidro|palermo|balvanera)\b/i.test(x)&&!/(?:curso|disponibilidad)/i.test(x))||'';
+let courseChunk=labelled(/curso\s*:\s*([^\n/]+)/i)||segments.find(x=>/(?:autom[aá]tic[oa]|manual|moto|auto\s*x\s*\d)/i.test(x)&&/(?:x|×)\s*\d+/.test(x))||'';
+let availability=labelled(/disponibilidad(?:\s+de\s+d[ií]as)?\s*:\s*([^\n]+)/i)||'';
+if(student&&student.length<95)$('student').value=student;else warnings.push('Revisá el nombre');
+if(phone)$('phone').value=phone.replace(/[^\d+]/g,'');else warnings.push('Falta teléfono');
+if(address)$('address').value=address;else warnings.push('Falta dirección');
+if(school)$('school').value=school;else $('school').selectedIndex=-1;
+if(teacher)$('teacher').value=teacher.id;else $('teacher').value='';
+const n=normalizeImport(courseChunk),count=(n.match(/(?:x|×|por|de)\s*(\d{1,2})\b/)||[])[1];let course='';
+if(count){const category=/extension/.test(n)?'Extensión ':/(?:individual|suelta)/.test(n)?'Clase individual ':'';
+if(/moto/.test(n)){const matching=TARIFFS.filter(t=>normalizeImport(t[0]).includes('moto')&&normalizeImport(t[0]).endsWith('x'+count));if(matching.length===1)course=matching[0][0]}
+else if(/automatic/.test(n))course=category+(category?'automático':'Automático')+' x'+count;
+else if(/auto|manual/.test(n))course=category+(category?'manual':'Manual')+' x'+count;
+course=course.replace(/\s+x/,' x')}
+if(course&&TARIFFS.some(t=>t[0].toLowerCase()===course.toLowerCase()))$('course').value=TARIFFS.find(t=>t[0].toLowerCase()===course.toLowerCase())[0];else{$('course').selectedIndex=-1;warnings.push('Curso no reconocido')}
+const payment=normalizeImport(courseChunk+' '+labelled(/(?:forma de pago|pago)\s*:\s*([^\n]+)/i));
+if(/transferencia|tarjeta|mercado pago|\bmp\b/.test(payment)){$('method').value='Tarjeta';$('balanceCollector').value='escuela'}else if(/efec|contado/.test(payment)){$('method').value='Efectivo';$('balanceCollector').value='instructor'}else warnings.push('Forma de pago no detectada');
+const days=labelled(/disponibilidad de d[ií]as\s*:\s*([^\n]+)/i),hours=labelled(/disponibilidad de horarios\s*:\s*([^\n]+)/i);
+if(days)$('availableDays').value=days;if(hours)$('availableHours').value=hours;
+const schedule=raw.match(/\b(?:lunes|martes|mi[eé]rcoles|jueves|viernes|s[aá]bados?|domingos?)\b[^\n]*(?:\n\s*(?:lunes|martes|mi[eé]rcoles|jueves|viernes|s[aá]bados?|domingos?)\b[^\n]*)*/i);
+if(schedule&&!days){const entries=schedule[0].split('\n').map(x=>x.trim()).filter(x=>/^(?:lunes|martes|mi[eé]rcoles|jueves|viernes|s[aá]bados?|domingos?)/i.test(x));$('availableDays').value=entries.map(x=>(x.match(/^(lunes|martes|mi[eé]rcoles|jueves|viernes|s[aá]bados?|domingos?)/i)||[])[0]).join(' y ');if(!hours)$('availableHours').value=entries.join(' / ')}
+else if(availability&&!days){const time=availability.match(/(?:de\s*)?\d{1,2}(?::\d{2})?\s*(?:a|hasta|-)\s*\d{1,2}(?::\d{2})?\s*(?:hs?|horas?)?/i),qualitative=availability.match(/por la ma[ñn]ana|por la tarde|por la noche|mediod[ií]a|todo el d[ií]a/i);$('availableDays').value=availability.replace(time?.[0]||qualitative?.[0]||'','').replace(/[,;\s]+$/,'').trim()||availability;if(!hours)$('availableHours').value=(time?.[0]||qualitative?.[0]||'').trim()}
+if(!$('availableDays').value||!$('availableHours').value)warnings.push('Revisá disponibilidad');
+const amount=v=>{const cleaned=String(v).replace(/\./g,'').replace(/,/g,'');const num=Number(cleaned);return num>0&&num<1000?num*1000:num};
+const deposit=raw.match(/(?:se[ñn][aoó]|reserva|abon[oó])\s*(?:recibida|de|por|:|\$|\s)*\s*([\d.]+)/i);
+$('hasDeposit').checked=!!deposit;$('deposit').disabled=!deposit;if(deposit)$('deposit').value=amount(deposit[1]);
+const price=raw.match(/(?:precio(?: total)?|total(?:\s+del\s+curso)?)\s*:?\s*\$?\s*([\d.]+)/i)||courseChunk.match(/\b(?:x|×)\s*\d+\s+(?:efec(?:tivo)?|tarjeta|transferencia)\s*\$?\s*([\d.]+)/i);
+$('isPromo').checked=!!price;$('salePrice').disabled=!price;$('salePrice').value=price?amount(price[1]):'';
+const due=raw.match(/\bdebe\s*\$?\s*([\d.]+)/i);if(due&&price&&deposit&&amount(price[1])-amount(deposit[1])!==amount(due[1]))warnings.push('Precio, seña y saldo informado no coinciden');
+const dates=(raw.match(/\b\d{1,2}\/\d{1,2}(?:\/\d{2,4})?\b/g)||[]);if(dates.length)$('notes').value='Fechas indicadas: '+dates.join(', ');
 preview();$('importFeedback').textContent=(warnings.length?'⚠️ Revisar antes de guardar: '+warnings.join('; '):'Datos detectados. Revisá todo antes de guardar.')+' — Instructor: '+(teacher?teacher.name:'REVISAR')+' · Autoescuela: '+(school||'REVISAR')+' — '+lines.length+' líneas procesadas.';document.querySelector('#enrollForm').scrollIntoView({behavior:'smooth',block:'start'})}
 $('parseWhatsApp').addEventListener('click',parseIncomingWhatsApp);$('pasteWhatsApp').addEventListener('click',async()=>{try{if(!navigator.clipboard||!navigator.clipboard.readText)throw Error('clipboard unavailable');const value=await navigator.clipboard.readText();if(!value.trim()){ $('importFeedback').textContent='No hay texto copiado. Copiá primero el mensaje en WhatsApp.';return;} $('whatsappImport').value=value;parseIncomingWhatsApp();}catch(e){$('importFeedback').textContent='Android no permitió leer el texto copiado. Mantené presionado el cuadro Mensaje recibido, elegí Pegar y tocá Completar inscripción.';}});
 function receiveSharedText(){const q=new URLSearchParams(location.search);const incoming=q.get('text')||q.get('shared_text')||'';if(incoming.trim()){$('whatsappImport').value=incoming;show('alta');parseIncomingWhatsApp();history.replaceState(null,'',location.pathname+location.hash)}}
