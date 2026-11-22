@@ -78,29 +78,34 @@ const schoolAliases=[
  ['Autoescuela Modelo',['autoescuela modelo','modelo']],
  ['El Club del Manejo',['el club del manejo','club del manejo','el club','club']]
 ];
-// Se admiten varios mensajes unidos; se priorizan líneas de asignación al final.
+// Motor genérico de asignaciones: usa TODOS los instructores registrados, no una lista fija.
 const assignmentLines=lines.filter(line=>{
  const n=normalizeImport(line).replace(/[.,;]+$/,'').trim();
- // Solo líneas cortas de asignación: no confundir nombres del alumno o calles con instructores.
- if(n.length>85 || /\d{3,}|\b(?:curso|disp|direccion|precio|saldo|seña|seno|debe|abon)\b/.test(n))return false;
- return schoolAliases.some(([,als])=>als.some(alias=>hasWord(n,alias))) || db.teachers.some(t=>{
-  const first=normalizeImport(t.name).split(/\s+/)[0];
-  return first.length>=3&&hasWord(n,first)&&n.split(/\s+/).length<=4;
- });
+ if(n.length>100||/\d{3,}|\b(?:curso|disp|direccion|precio|saldo|seña|seno|debe|abon|disponibilidad)\b/.test(n))return false;
+ return schoolAliases.some(([,als])=>als.some(alias=>hasWord(n,alias))) ||
+  db.teachers.some(t=>normalizeImport(t.name).split(/\s+/).some(token=>token.length>=3&&hasWord(n,token))&&n.split(/\s+/).length<=5);
 });
 const hits=new Set();
-for(const line of assignmentLines){const n=normalizeImport(line);for(const [name,als] of schoolAliases)if(als.some(alias=>hasWord(n,alias)))hits.add(name)}
+for(const line of assignmentLines){
+ const n=normalizeImport(line);
+ for(const [name,als] of schoolAliases)if(als.some(alias=>hasWord(n,alias)))hits.add(name);
+}
 const school=hits.size===1?[...hits][0]:'';
 if(!school)warnings.push(hits.size>1?'Autoescuela ambigua: seleccioná la correcta':'Autoescuela no identificada');
-// Los nombres cortos se comparan con los instructores registrados; nunca se elige al azar.
+// El nombre completo, cualquier nombre de pila o apellido puede aparecer en el mensaje.
+// Una coincidencia parcial jamás se asigna sin verificar que sea única.
 const teacherHits=[];
 for(const line of assignmentLines){
  const n=normalizeImport(line);
  for(const t of db.teachers){
-  const full=normalizeImport(t.name), first=full.split(/\s+/)[0];
-  if((hasWord(n,full)||first.length>=3&&hasWord(n,first))&&!teacherHits.some(x=>x.id===t.id))teacherHits.push(t);
+  const full=normalizeImport(t.name).replace(/\s+/g,' ');
+  const tokens=full.split(' ').filter(x=>x.length>=3);
+  const matched=hasWord(n,full)||tokens.some(token=>hasWord(n,token));
+  if(matched&&!teacherHits.some(x=>x.id===t.id))teacherHits.push(t);
  }
 }
+// No filtrar automáticamente por escuela: el registro del instructor puede ser compartido
+// entre autoescuelas. Si hay varios nombres iguales, solicitar elección.
 const teacher=teacherHits.length===1?teacherHits[0]:null;
 if(!teacher)warnings.push(teacherHits.length>1?'Instructor ambiguo: '+teacherHits.map(t=>t.name).join(' / '):'Instructor no identificado');
 const labelled=re=>{const m=raw.match(re);return m?m[1].trim():''};
