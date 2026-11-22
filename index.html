@@ -461,7 +461,7 @@ $('filterMonth').addEventListener('change',render);$('filterSchool').addEventLis
    '<div><span>Precio total del curso (una sola venta)</span><b>'+money(originalPrice)+'</b></div>'+
    '<div><span>Forma de pago</span><b>'+escape(paymentLabel(r))+'</b></div>'+
    '<div><span>Seña recibida por la escuela</span><b>'+money(received?0:r.deposit)+'</b></div>'+
-   '<div><span>Dinero del alumno atribuido a este instructor</span><b>'+money(collectedByTeacher)+'</b></div>'+
+   '<div><span>Dinero a cobrar del alumno</span><b>'+money(collectedByTeacher)+'</b></div>'+
    '<div><span>Comisión por sus '+assigned+' clases</span><b>'+money(r.instructorShare)+'</b></div>'+
    '<div><span>Pendiente del alumno (informativo)</span><b>'+money(actualStudentDue(r))+'</b></div></div>'+
    '<div class="account-course-result"><span>LIQUIDACIÓN DE ESTE INSTRUCTOR</span><strong>'+(n>0?'Debe entregar a la autoescuela '+money(n):n<0?'La autoescuela debe pagarle '+money(-n):'Sin saldo por este curso')+'</strong></div></article>';
@@ -469,12 +469,12 @@ $('filterMonth').addEventListener('change',render);$('filterSchool').addEventLis
  $('accountSummary').innerHTML='<div class="grid4">'+[
   ['Clases / asignaciones del mes',rs.length],
   ['Comisiones de este instructor',money(earned)],
-  ['Cobros atribuidos al instructor (proyectados)',money(held)],
+  ['Dinero a cobrar del alumno',money(held)],
   ['Instructor entregó a la escuela',money(paidTeacher)],
   ['Escuela pagó al instructor',money(paidSchool)]
  ].map(([a,b])=>'<div class="stat"><span class="muted">'+a+'</span><b>'+b+'</b></div>').join('')+
  '</div><div class="sub" style="margin-top:12px"><strong>Saldo de cuenta corriente: '+escape(outcome)+'</strong><p class="muted" style="margin:8px 0 0">Los cursos activos se incluyen completos en el balance proyectado. Una asignación de clases no crea una segunda venta. Las entregas reales entre instructor y escuela se descuentan cuando se registran.</p></div>'+
- '<h3 style="margin-top:22px">Detalle por alumno y curso</h3>'+
+ '<p class="muted" style="margin-top:10px">El dinero a cobrar se incluye en el balance aunque el alumno todavía no lo haya pagado. No significa que el instructor ya tenga ese efectivo.</p>'+ '<h3 style="margin-top:22px">Detalle por alumno y curso</h3>'+ 
  (rs.length?'<div class="account-course-list">'+rs.slice().sort((a,b)=>b.date.localeCompare(a.date)).map(card).join('')+'</div>':'<p class="muted">No hay cursos de este instructor en el mes seleccionado.</p>');
  $('paymentHistory').innerHTML=ps.length?'<div class="account-course-list">'+ps.slice().sort((a,b)=>b.date.localeCompare(a.date)).map(x=>'<article class="account-course-card"><strong>'+escape(x.date)+' · '+money(x.amount)+'</strong><p>'+escape(x.direction==='teacher_to_school'?'Instructor entregó a escuela':'Escuela pagó al instructor')+'</p><p class="muted">'+escape(x.type||'')+' · '+escape(x.method||'')+' · '+escape(x.notes||'')+'</p><button class="danger smallbtn" data-delete-payment="'+escape(x.id)+'">Eliminar movimiento</button></article>').join('')+'</div>':'<p class="muted">Todavía no hay movimientos de dinero registrados para esta cuenta y mes.</p>';
 }
