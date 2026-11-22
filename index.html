@@ -113,10 +113,14 @@ const labelled=re=>{const m=raw.match(re);return m?m[1].trim():''};
 const segments=raw.split(/\s*\/{1,2}\s*|\n/).map(x=>x.trim()).filter(Boolean);
 const first=segments[0]||'';
 let student=cleanStudentName(labelled(/(?:nombre(?: y apellido)?|nombre del alumno|alumno)\s*:\s*([^\n/]+)/i)||first).replace(/[\s/]+$/,'');
+// En mensajes libres el teléfono puede venir junto al nombre en la misma línea.
+student=student.replace(/\s*(?:\+?\d[\d\s().-]{8,}\d)\s*$/,'').trim();
 let phone=labelled(/(?:celular|tel[eé]fono(?:\s*\/\s*whatsapp)?|whatsapp)\s*:\s*([+\d\s().-]{9,})/i);
 if(!phone){const segment=segments.find(x=>/^\+?[\d\s().-]{9,}$/.test(x)&&x.replace(/\D/g,'').length>=10);if(segment)phone=segment;}
 if(!phone){const m=raw.match(/(?:\+?\d[\d\s().-]{8,}\d)/);if(m)phone=m[0];}
 let address=labelled(/direcci[oó]n(?: completa)?\s*:\s*([^\n/]+)/i)||segments.find(x=>/\b(?:caba|flores|av\.?|calle|yerbal|san isidro|palermo|balvanera)\b/i.test(x)&&!/(?:curso|disponibilidad)/i.test(x))||'';
+// Calles sin localidad explícita en el mismo fragmento, por ejemplo 'Coronel Espora 325 Sarandí, Avellaneda'.
+if(!address)address=segments.find(x=>/\b\d{1,5}\b/.test(x)&&/^[\p{L}][\p{L}\s.,º°#-]{3,}\s+\d{1,5}\b/iu.test(x)&&!/(?:manual|autom[aá]tic|moto|curso|disponibilidad|precio|seña|saldo)/i.test(x))||'';
 let courseChunk=labelled(/curso\s*:\s*([^\n]+)/i)||'';
 if(!courseChunk){
  const moto=raw.match(/\bmoto\s*(?:125\s*\/\s*150|110|125|150|200|300|\+\s*300)?\s*(?:cc)?\s*(?:x|×)\s*\d{1,2}\b[^\n]*/i);
