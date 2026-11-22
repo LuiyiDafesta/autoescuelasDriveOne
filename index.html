@@ -125,33 +125,44 @@ for(const line of assignmentLines){
 }
 // No filtrar automáticamente por escuela: el registro del instructor puede ser compartido
 // entre autoescuelas. Si hay varios nombres iguales, solicitar elección.
-const teacher=teacherHits.length===1?teacherHits[0]:null;
-if(!teacher)warnings.push(teacherHits.length>1?'Instructor ambiguo: '+teacherHits.map(t=>t.name).join(' / '):'Instructor no identificado');
+// La especialidad se valida después de reconocer el curso, nunca antes.
+let teacher=null;
 const labelled=re=>{const m=raw.match(re);return m?m[1].trim():''};
 // Mensajes separados por una o dos barras, saltos de línea o encabezados de WhatsApp.
 const segments=raw.split(/\s*\/{1,2}\s*|\n/).map(x=>x.trim()).filter(Boolean);
 const first=segments[0]||'';
-let student=cleanStudentName(labelled(/(?:nombre(?: y apellido)?|nombre del alumno|alumno)\s*:\s*([^\n/]+)/i)||first).replace(/[\s/]+$/,'');
+// Formato compacto: Nombre Apellido TEL Calle 123, Localidad/Curso xN $PRECIO efe abonó $SEÑA/Disponibilidad ...
+const compact=first.match(/^(.+?)\s+(\+?\d[\d .()-]{7,}\d)\s+(.+)$/u);
+// Priorizar el primer teléfono de 10 a 13 dígitos: el patrón genérico puede absorber una altura.
+const phoneMatch=first.match(/(?:^|\s)(\+?\d{10,13})(?=\s|$|[,;])/);
+const phonePos=phoneMatch?first.indexOf(phoneMatch[1]):-1;
+const compactName=phonePos>=0?first.slice(0,phonePos).trim():(compact?compact[1].trim():'');
+const compactPhone=phonePos>=0?phoneMatch[1]:(compact?compact[2].trim():'');
+const compactAddress=phonePos>=0?first.slice(phonePos+phoneMatch[1].length).trim():(compact?compact[3].trim():'');
+let student=cleanStudentName(labelled(/(?:nombre(?: y apellido)?|nombre del alumno|alumno)\s*:\s*([^\n/]+)/i)||compactName||first).replace(/[\s/]+$/,'');
 // En mensajes libres el teléfono puede venir junto al nombre en la misma línea.
 student=student.replace(/\s*(?:\+?\d[\d\s().-]{8,}\d)\s*$/,'').trim();
 let phone=labelled(/(?:celular|tel[eé]fono(?:\s*\/\s*whatsapp)?|whatsapp)\s*:\s*([+\d\s().-]{9,})/i);
+if(!phone&&compactPhone)phone=compactPhone;
 if(!phone){const segment=segments.find(x=>/^\+?[\d\s().-]{9,}$/.test(x)&&x.replace(/\D/g,'').length>=10);if(segment)phone=segment;}
 if(!phone){const m=raw.match(/(?:\+?\d[\d\s().-]{8,}\d)/);if(m)phone=m[0];}
-let address=labelled(/direcci[oó]n(?: completa)?\s*:\s*([^\n/]+)/i)||segments.find(x=>/\b(?:caba|flores|av\.?|calle|yerbal|san isidro|palermo|balvanera)\b/i.test(x)&&!/(?:curso|disponibilidad)/i.test(x))||'';
+let address=labelled(/direcci[oó]n(?: completa)?\s*:\s*([^\n/]+)/i)||(compactAddress&&/\b\d{1,5}\b/.test(compactAddress)?compactAddress:'')||segments.find(x=>/\b(?:caba|flores|av\.?|calle|yerbal|san isidro|palermo|balvanera)\b/i.test(x)&&!/(?:curso|disponibilidad)/i.test(x))||'';
 // Calles sin localidad explícita en el mismo fragmento, por ejemplo 'Coronel Espora 325 Sarandí, Avellaneda'.
 if(!address)address=segments.find(x=>/\b\d{1,5}\b/.test(x)&&/^[\p{L}][\p{L}\s.,º°#-]{3,}\s+\d{1,5}\b/iu.test(x)&&!/(?:manual|autom[aá]tic|moto|curso|disponibilidad|precio|seña|saldo)/i.test(x))||'';
+// El bloque de dirección termina donde empieza la descripción del curso.
+address=address.replace(/\s*\/?\s*(?:manual|autom[aá]tic[oa]|moto)\s*(?:x|×)\s*\d+.*$/i,'').trim().replace(/[,\s]+$/,'');
 let courseChunk=labelled(/curso\s*:\s*([^\n]+)/i)||'';
 if(!courseChunk){
  const moto=raw.match(/\bmoto\s*(?:125\s*\/\s*150|110|125|150|200|300|\+\s*300)?\s*(?:cc)?\s*(?:x|×)\s*\d{1,2}\b[^\n]*/i);
  const auto=raw.match(/\b(?:auto\s+)?(?:autom[aá]tic[oa]|manual)\s*(?:x|×)\s*\d{1,2}\b[^\n]*/i);
  courseChunk=(moto||auto||[])[0]||segments.find(x=>/(?:autom[aá]tic[oa]|manual|moto|auto\s*x\s*\d)/i.test(x)&&/(?:x|×)\s*\d+/.test(x))||'';
 }
-let availability=labelled(/disponibilidad(?:\s+de\s+d[ií]as)?\s*:\s*([^\n]+)/i)||'';
+let availability=labelled(/disponibilidad(?:\s+de\s+d[ií]as)?\s*:?\s*([^\n/]+)/i)||'';
 if(student&&student.length<95)$('student').value=student;else warnings.push('Revisá el nombre');
 if(phone)$('phone').value=phone.replace(/[^\d+]/g,'');else warnings.push('Falta teléfono');
 if(address)$('address').value=address;else warnings.push('Falta dirección');
 if(school)$('school').value=school;else $('school').selectedIndex=-1;
-if(teacher)$('teacher').value=teacher.id;else $('teacher').value='';
+// Instructor se asigna al identificar la especialidad del curso.
 const n=normalizeImport(courseChunk),count=(n.match(/(?:x|×|por|de)\s*(\d{1,2})\b/)||[])[1];let course='';
 if(count){const category=/extension/.test(n)?'Extensión ':/(?:individual|suelta)/.test(n)?'Clase individual ':'';
 if(/moto/.test(n)){
@@ -170,6 +181,20 @@ else if(/automatic/.test(n))course=category+(category?'automático':'Automático
 else if(/auto|manual/.test(n))course=category+(category?'manual':'Manual')+' x'+count;
 course=course.replace(/\s+x/,' x')}
 if(course&&TARIFFS.some(t=>t[0].toLowerCase()===course.toLowerCase()))$('course').value=TARIFFS.find(t=>t[0].toLowerCase()===course.toLowerCase())[0];else{$('course').selectedIndex=-1;warnings.push('Curso no reconocido')}
+// Resolver nombres abreviados con especialidad compatible. Nunca elegir por nombre solamente.
+const selectedCourse=$('course').value;
+const kind=/^moto/i.test(selectedCourse)?'moto':/autom[aá]tico/i.test(selectedCourse)?'automatico':/manual/i.test(selectedCourse)?'manual':'';
+const compatible=t=>{const type=normalizeImport(t.type||'');return kind==='moto'?/moto/.test(type):kind==='automatico'?/automatic/.test(type):kind==='manual'?/manual/.test(type):false};
+const eligible=teacherHits.filter(compatible);
+if(eligible.length===1)teacher=eligible[0];
+else if(eligible.length>1){
+ // Preferir coincidencia del nombre completo, si existe una única.
+ const exact=eligible.filter(t=>assignmentLines.some(line=>hasWord(normalizeImport(line),t.name)));
+ if(exact.length===1)teacher=exact[0];
+}
+if(teacher)$('teacher').value=teacher.id;
+else {$('teacher').value='';warnings.push(eligible.length>1?'Instructor ambiguo para '+(kind||'el curso')+': '+eligible.map(t=>t.name).join(' / '):teacherHits.length?'Instructor mencionado no compatible con '+(kind||'el curso'):'Instructor no identificado');}
+
 // No inferir cuotas a partir del tipo de curso: solo por instrucciones explícitas.
 const paymentInstructions=normalizeImport(raw);
 const halfPhrase=/(?:mitad|50\s*%|50\s*\/\s*50|dos\s+(?:mitades|partes))/.test(paymentInstructions)&&/(?:primer[ao]?\s+clase|1\s*(?:ra|era|a)?\s*clase)/.test(paymentInstructions)&&/(?:tercer[ao]?\s+clase|3\s*(?:ra|era|a)?\s*clase)/.test(paymentInstructions);
@@ -180,18 +205,18 @@ if(halfPhrase){
  else warnings.push('El mensaje indica pago en mitades, pero el curso no admite ese plan: revisar');
 }
 syncHalfPlan();
-const payment=normalizeImport(courseChunk+' '+labelled(/(?:forma de pago|pago)\s*:\s*([^\n]+)/i));
+const payment=normalizeImport(courseChunk+' '+raw.match(/(?:^|\s)(?:efe|efec|efectivo|tarjeta|transferencia|mercado pago)(?=\s|$|[.,/])/i)?.[0]+' '+labelled(/(?:forma de pago|pago)\s*:\s*([^\n]+)/i));
 if(/transferencia|tarjeta|mercado pago|\bmp\b/.test(payment)){$('method').value='Tarjeta';$('balanceCollector').value='escuela'}else if(/efec|contado/.test(payment)){$('method').value='Efectivo';$('balanceCollector').value='instructor'}else warnings.push('Forma de pago no detectada');
 const days=labelled(/disponibilidad de d[ií]as\s*:\s*([^\n]+)/i),hours=labelled(/disponibilidad de horarios\s*:\s*([^\n]+)/i);
 if(days)$('availabilityCombined').value=days+(hours?' — '+hours:'');else if(hours)$('availabilityCombined').value=hours;
 const schedule=raw.match(/\b(?:lunes|martes|mi[eé]rcoles|jueves|viernes|s[aá]bados?|domingos?)\b[^\n]*(?:\n\s*(?:lunes|martes|mi[eé]rcoles|jueves|viernes|s[aá]bados?|domingos?)\b[^\n]*)*/i);
 if(schedule&&!days){const entries=schedule[0].split('\n').map(x=>x.trim()).filter(x=>/^(?:lunes|martes|mi[eé]rcoles|jueves|viernes|s[aá]bados?|domingos?)/i.test(x));$('availabilityCombined').value=entries.join(' / ')}
 else if(availability&&!days){$('availabilityCombined').value=availability.trim()}
-if(!$('availabilityCombined').value)warnings.push('Revisá disponibilidad');
+if(!$('availabilityCombined').value)warnings.push('Revisá disponibilidad');else if(/\bvairado\b/i.test($('availabilityCombined').value))$('availabilityCombined').value=$('availabilityCombined').value.replace(/\bvairado\b/ig,'Variado');
 const amount=v=>{const cleaned=String(v).replace(/\./g,'').replace(/,/g,'');const num=Number(cleaned);return num>0&&num<1000?num*1000:num};
 const deposit=raw.match(/(?:se[ñn][aoó]|reserva|abon[oó])\s*(?:recibida|de|por|:|\$|\s)*\s*([\d.]+)/i);
 $('hasDeposit').checked=!!deposit;$('deposit').disabled=!deposit;if(deposit)$('deposit').value=amount(deposit[1]);
-const price=raw.match(/(?:precio(?: total)?|total(?:\s+del\s+curso)?)\s*:?\s*\$?\s*([\d.]+)/i)||courseChunk.match(/\b(?:x|×)\s*\d+\s+(?:efec(?:tivo)?|tarjeta|transferencia)\s*\$?\s*([\d.]+)/i);
+const price=raw.match(/(?:precio(?: total)?|total(?:\s+del\s+curso)?)\s*:?\s*\$?\s*([\d.]+)/i)||courseChunk.match(/(?:manual|autom[aá]tic[oa]|moto)[^\n]{0,35}?\$\s*([\d.]+)/i)||courseChunk.match(/\b(?:x|×)\s*\d+\s+(?:\$\s*[\d.]+|(?:efec(?:tivo)?|tarjeta|transferencia)\s*\$?\s*[\d.]+)/i)?.[0]?.match(/\$\s*([\d.]+)/)||null;
 const importedAmount=price?amount(price[1]):null;
 const baseAmount=course?(TARIFFS.find(t=>t[0]===course)||[])[1]:null;
 const explicitPromo=false; // No interpretar promociones hasta configurar sus precios.
