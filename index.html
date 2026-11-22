@@ -328,9 +328,7 @@ function instructorWhatsAppMessage(r,t){
   '*Disponibilidad:* '+availability,
   '',
   '🚗 *INFORMACIÓN DEL CURSO*',
-  ...(transferred?['*Curso original:* '+r.course,'*Origen:* Curso originalmente asignado a otro instructor.']:['*Curso:* '+r.course]),
-  '*Instructor actual:* '+t.name,
-  '*CLASES ASIGNADAS: '+hours+'*',
+  ...(transferred?['*Este curso es a completar. Lo tenía otro instructor.*','','*CURSO A COMPLETAR: '+(/moto/i.test(r.course)?'MOTO':/autom[aá]tico/i.test(r.course)?'AUTO AUTOMÁTICO':'AUTO MANUAL')+' X '+hours+' '+(hours===1?'CLASE':'CLASES')+'*']:['*Curso:* '+r.course,'*Instructor:* '+t.name,'*CLASES ASIGNADAS: '+hours+'*']),
   '',
   '💰 *ESTADO DEL PAGO*'
  ];
