@@ -257,21 +257,49 @@ function segments(r){if(r.status==='cancelado')return[];if(!Array.isArray(r.assi
 function accountingRecords(){return [...activeRecords().flatMap(segments),...db.records.filter(r=>r.status==='cancelado'&&r.cancellation?.settled).flatMap(r=>{const c=r.cancellation;return (c.breakdown||[]).filter(a=>a.hours>0||a.commission>0||a.collected>0).map(a=>({...r,teacherId:a.teacherId,teacherName:a.teacherName,course:r.course,assignedHours:a.hours,price:a.collected,deposit:0,instructorShare:a.commission,schoolShare:a.collected-a.commission,balanceCollector:a.collector,mpFee:0,surcharge:0,cancellationAccounting:true}))})]}
 function transferPaidText(r){const p=r.transferPayment;if(!p)return 'Pago de transferencia: sin confirmar';if(!p.paidFull)return 'PAGO PARCIAL · saldo del alumno: '+money(p.due||0);return p.custody==='instructor'?'PAGADO TOTALMENTE EN EFECTIVO AL INSTRUCTOR ORIGINAL ('+r.teacherName+') · saldo $0':p.custody==='escuela'?'PAGADO TOTALMENTE A LA AUTOESCUELA ('+r.method+') · saldo $0':'PAGADO TOTALMENTE · tenencia del dinero a verificar';}
 function transferCollectText(r,a){const p=r.transferPayment;if(!p)return 'Cobro pendiente de confirmar';if(p.paidFull)return 'NO COBRAR NADA AL ALUMNO';return p.pendingCollector==='instructor'&&String(a.teacherId)!==String(r.teacherId)?'Cobrar saldo pendiente: '+money(p.due||0):'NO COBRAR AL ALUMNO · saldo gestionado por autoescuela u otro instructor';}
+function cleanInstructorStudentFields(r){
+ const original={student:String(r.student||'').trim(),address:String(r.address||'').trim(),availability:String(r.availabilityCombined||[r.availableDays,r.availableHours].filter(Boolean).join(' / ')||'').trim()};
+ const street=/\b(?:calle|av\.?|avenida|pasaje|boulevard|bulevar|ruta|[A-Za-zÁÉÍÓÚÑáéíóúñ]+(?:\s+[A-Za-zÁÉÍÓÚÑáéíóúñ]+){0,4})\s+\d{1,5}\b/i;
+ let student=original.student,address=original.address,availability=original.availability;
+ // Nombre y domicilio pegados: separar por la primera coma que antecede a una dirección.
+ const parts=student.split(/\s*,\s*/).filter(Boolean);
+ if(parts.length>1&&parts.slice(1).some(x=>street.test(x))){student=parts[0].trim();if(!address||address===original.student)address=parts.slice(1).join(', ').trim()}
+ if(address.startsWith(student+',')||address.startsWith(student+' ,'))address=address.slice(student.length).replace(/^\s*,\s*/,'').trim();
+ // El curso y la forma de pago no son disponibilidad.
+ availability=availability.replace(/\s*\/\s*(?:manual|autom[aá]tico|moto)\s*x?\s*\d+\b.*$/i,'').trim();
+ availability=availability.replace(/\s*[,;]\s*(?:manual|autom[aá]tico|moto)\s*x?\s*\d+\b.*$/i,'').trim();
+ const suspect=street.test(student)||/\b(?:manual|autom[aá]tico|moto)\s*x\s*\d+|\b(?:tarjeta|efectivo)\b/i.test(availability)||/\b(?:manual|autom[aá]tico|moto)\s*x\s*\d+/i.test(address);
+ return {student,address,availability,changed:student!==original.student||address!==original.address||availability!==original.availability,suspect};
+}
+function reviewInstructorStudentFields(r){
+ const fields=cleanInstructorStudentFields(r);
+ if(!fields.changed&&!fields.suspect)return true;
+ const message='Revisá los datos del alumno antes de enviar WhatsApp.\n\nNombre: '+fields.student+'\nDirección: '+fields.address+'\nDisponibilidad: '+fields.availability+'\n\nPodés corregirlos a continuación. Cancelar evita enviar datos incorrectos.';
+ if(!confirm(message))return false;
+ const student=prompt('Nombre y apellido del alumno (sin dirección):',fields.student);if(student===null)return false;
+ const address=prompt('Dirección del alumno (sin nombre):',fields.address);if(address===null)return false;
+ const availability=prompt('Días y horarios disponibles (sin curso ni forma de pago):',fields.availability);if(availability===null)return false;
+ const fixed={student:student.trim(),address:address.trim(),availability:availability.trim()};
+ if(!fixed.student||!fixed.address||!fixed.availability||/\d{2,5}/.test(fixed.student)||/\b(?:manual|autom[aá]tico|moto)\s*x?\s*\d+|\b(?:tarjeta|efectivo)\b/i.test(fixed.availability)){alert('Los datos todavía parecen mezclados. Corregilos antes de enviar.');return false}
+ r.student=fixed.student;r.address=fixed.address;r.availabilityCombined=fixed.availability;r.availableDays=fixed.availability;r.availableHours='';
+ save();render();return true;
+}
 function instructorWhatsAppMessage(r,t){
  const assignment=r.assignments?.find(a=>String(a.teacherId)===String(t.id));
  const transferred=!!r.assignments?.length && String(t.id)!==String(r.teacherId);
  const hours=assignment?Number(assignment.hours):totalHours(r);
  const due=actualStudentDue(r);
  const paidFull=r.method==='Tarjeta'||r.transferPayment?.paidFull;
- const availability=r.availabilityCombined||[r.availableDays,r.availableHours].filter(Boolean).join(' / ')||'A coordinar';
+ const cleaned=cleanInstructorStudentFields(r);
+ const availability=cleaned.availability||'A coordinar';
  const lines=[
   '🚘 *CURSO ASIGNADO*',
   '🏫 *'+r.school+'*',
   '',
   '👤 *DATOS DEL ALUMNO*',
-  '*Nombre:* '+r.student,
+  '*Nombre:* '+cleaned.student,
   '*WhatsApp:* '+(r.phone||'No informado'),
-  '*Dirección:* '+(r.address||'No informada'),
+  '*Dirección:* '+(cleaned.address||'No informada'),
   '*Disponibilidad:* '+availability,
   '',
   '🚗 *INFORMACIÓN DEL CURSO*',
@@ -295,6 +323,7 @@ function instructorWhatsAppMessage(r,t){
 }
 function sendInstructorCourse(r,t){
  if(!t){alert('No se encontró el instructor asignado.');return}
+ if(!reviewInstructorStudentFields(r))return;
  let number=String(t.phone||'').replace(/\D/g,'');
  if(number.length===10)number='549'+number;
  else if(number.startsWith('54')&&!number.startsWith('549'))number='549'+number.slice(2);
