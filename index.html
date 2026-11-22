@@ -259,16 +259,39 @@ function transferPaidText(r){const p=r.transferPayment;if(!p)return 'Pago de tra
 function transferCollectText(r,a){const p=r.transferPayment;if(!p)return 'Cobro pendiente de confirmar';if(p.paidFull)return 'NO COBRAR NADA AL ALUMNO';return p.pendingCollector==='instructor'&&String(a.teacherId)!==String(r.teacherId)?'Cobrar saldo pendiente: '+money(p.due||0):'NO COBRAR AL ALUMNO · saldo gestionado por autoescuela u otro instructor';}
 function instructorWhatsAppMessage(r,t){
  const assignment=r.assignments?.find(a=>String(a.teacherId)===String(t.id));
- const transferred=!!r.assignments?.length;
+ const transferred=!!r.assignments?.length && String(t.id)!==String(r.teacherId);
  const hours=assignment?Number(assignment.hours):totalHours(r);
  const due=actualStudentDue(r);
- const payment=r.method==='Tarjeta'?'PAGADO COMPLETAMENTE A LA AUTOESCUELA · NO COBRAR AL ALUMNO':r.transferPayment?.paidFull?transferPaidText(r):r.paymentPlan?.type==='half_1_3'?'PAGO EN DOS MITADES':due===0?'PAGADO COMPLETAMENTE':'PAGO EN EFECTIVO';
- let collect;
- if(r.method==='Tarjeta'||r.transferPayment?.paidFull)collect='NO COBRAR NADA AL ALUMNO';
- else if(transferred)collect=transferCollectText(r,assignment||{});
- else if(r.paymentPlan?.type==='half_1_3')collect='Primera clase: '+money(r.paymentPlan.installments?.[0]?.amount||0)+' · Tercera clase: '+money(r.paymentPlan.installments?.[1]?.amount||0)+' (verificar pagos ya realizados)';
- else collect=(Number(r.deposit||0)>0?'COBRAR SALDO PENDIENTE: ':'COBRAR TOTAL DEL CURSO: ')+money(due);
- return ['🚘 CURSO DE MANEJO · '+r.school,'','Nombre del alumno: '+r.student,'WhatsApp: '+(r.phone||'No informado'),'Dirección: '+(r.address||'No informada'),'','Curso original: '+r.course,'Instructor: '+t.name,'CLASES QUE DEBE REALIZAR: '+hours,...(transferred?['Transferido de: '+r.teacherName,'Distribución: '+r.assignments.map(a=>a.teacherName+' '+a.hours).join(' · ')]:[]),'','FORMA DE PAGO: '+payment,'INDICACIÓN DE COBRO: '+collect,'','Disponibilidad: '+(r.availabilityCombined||[r.availableDays,r.availableHours].filter(Boolean).join(' / ')||'A coordinar'),'Contactá al alumno dentro de las próximas 12 hs para coordinar las clases.'].join('\n');
+ const paidFull=r.method==='Tarjeta'||r.transferPayment?.paidFull;
+ const availability=r.availabilityCombined||[r.availableDays,r.availableHours].filter(Boolean).join(' / ')||'A coordinar';
+ const lines=[
+  '🚘 *CURSO ASIGNADO*',
+  '🏫 *'+r.school+'*',
+  '',
+  '👤 *DATOS DEL ALUMNO*',
+  '*Nombre:* '+r.student,
+  '*WhatsApp:* '+(r.phone||'No informado'),
+  '*Dirección:* '+(r.address||'No informada'),
+  '*Disponibilidad:* '+availability,
+  '',
+  '🚗 *INFORMACIÓN DEL CURSO*',
+  ...(transferred?['*Curso original:* '+r.course,'*Origen:* Curso originalmente asignado a otro instructor.']:['*Curso:* '+r.course]),
+  '*Instructor actual:* '+t.name,
+  '*CLASES ASIGNADAS: '+hours+'*',
+  '',
+  '💰 *ESTADO DEL PAGO*'
+ ];
+ if(paidFull){
+  lines.push('✅ *PAGADO COMPLETAMENTE*','El alumno abonó el curso a la autoescuela.','','⛔ *NO COBRAR NADA AL ALUMNO.*');
+ }else if(r.paymentPlan?.type==='half_1_3'){
+  const installments=r.paymentPlan.installments||[];
+  lines.push('*PAGO EN DOS MITADES*','*Primera clase:* '+money(installments[0]?.amount||0),'*Tercera clase:* '+money(installments[1]?.amount||0),'*Responsable del cobro:* '+(r.paymentPlan.payer==='escuela'?'AUTOESCUELA':'INSTRUCTOR'),'Confirmar las cuotas ya abonadas antes de cobrar.');
+ }else{
+  const collect=transferred?transferCollectText(r,assignment||{}):(Number(r.deposit||0)>0?'COBRAR SALDO PENDIENTE: ':'COBRAR TOTAL DEL CURSO: ')+money(due);
+  lines.push('*'+(due===0?'PAGADO COMPLETAMENTE':'PAGO EN EFECTIVO')+'*','*Indicación de cobro:* '+collect);
+ }
+ lines.push('','📲 *IMPORTANTE*','Contactá al alumno dentro de las próximas 12 horas para coordinar sus clases.');
+ return lines.join('\n');
 }
 function sendInstructorCourse(r,t){
  if(!t){alert('No se encontró el instructor asignado.');return}
