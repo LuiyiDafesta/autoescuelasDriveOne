@@ -102,7 +102,7 @@ const assignmentLines=lines.filter(line=>{
  const n=normalizeImport(line).replace(/[.,;]+$/,'').trim();
  if(n.length>100||/\d{3,}|\b(?:curso|disp|direccion|precio|saldo|seña|seno|debe|abon|disponibilidad)\b/.test(n))return false;
  return schoolAliases.some(([,als])=>als.some(alias=>hasWord(n,alias))) ||
-  db.teachers.some(t=>normalizeImport(t.name).split(/\s+/).some(token=>token.length>=3&&hasWord(n,token))&&n.split(/\s+/).length<=5);
+  db.teachers.some(t=>(normalizeImport(t.name).match(/[a-z0-9]{3,}/g)||[]).some(token=>hasWord(n,token))&&n.split(/\s+/).length<=5);
 });
 const hits=new Set();
 for(const line of assignmentLines){
@@ -111,16 +111,24 @@ for(const line of assignmentLines){
 }
 const school=hits.size===1?[...hits][0]:'';
 if(!school)warnings.push(hits.size>1?'Autoescuela ambigua: seleccioná la correcta':'Autoescuela no identificada');
-// El nombre completo, cualquier nombre de pila o apellido puede aparecer en el mensaje.
-// Una coincidencia parcial jamás se asigna sin verificar que sea única.
+// Motor dinámico: genera variantes para TODOS los instructores existentes,
+// incluyendo apodos entre paréntesis, nombres compuestos y apellidos.
+// No utiliza una tabla manual de nombres que quede desactualizada.
 const teacherHits=[];
+const teacherMatchStrength=new Map();
 for(const line of assignmentLines){
  const n=normalizeImport(line);
  for(const t of db.teachers){
-  const full=normalizeImport(t.name).replace(/\s+/g,' ');
-  const tokens=full.split(' ').filter(x=>x.length>=3);
-  const matched=hasWord(n,full)||tokens.some(token=>hasWord(n,token));
-  if(matched&&!teacherHits.some(x=>x.id===t.id))teacherHits.push(t);
+  const full=normalizeImport(t.name).replace(/\\s+/g,' ');
+  const nicknames=[...full.matchAll(/\\(([^)]+)\\)/g)].map(m=>m[1].trim());
+  const plain=full.replace(/\\([^)]*\\)/g,' ').replace(/\\s+/g,' ').trim();
+  const tokens=plain.match(/[a-z0-9]{3,}/g)||[];
+  const variants=[plain,...nicknames,...tokens];
+  const strength=hasWord(n,plain)?3:nicknames.some(a=>hasWord(n,a))?2:tokens.some(a=>hasWord(n,a))?1:0;
+  if(strength){
+   if(!teacherHits.some(x=>String(x.id)===String(t.id)))teacherHits.push(t);
+   teacherMatchStrength.set(String(t.id),Math.max(strength,teacherMatchStrength.get(String(t.id))||0));
+  }
  }
 }
 // No filtrar automáticamente por escuela: el registro del instructor puede ser compartido
@@ -186,11 +194,13 @@ const selectedCourse=$('course').value;
 const kind=/^moto/i.test(selectedCourse)?'moto':/autom[aá]tico/i.test(selectedCourse)?'automatico':/manual/i.test(selectedCourse)?'manual':'';
 const compatible=t=>{const type=normalizeImport(t.type||'');return kind==='moto'?/moto/.test(type):kind==='automatico'?/automatic/.test(type):kind==='manual'?/manual/.test(type):false};
 const eligible=teacherHits.filter(compatible);
-if(eligible.length===1)teacher=eligible[0];
-else if(eligible.length>1){
- // Preferir coincidencia del nombre completo, si existe una única.
- const exact=eligible.filter(t=>assignmentLines.some(line=>hasWord(normalizeImport(line),t.name)));
- if(exact.length===1)teacher=exact[0];
+if(eligible.length){
+ // Prioridad: nombre completo > apodo explícito > nombre o apellido.
+ // Primero filtrar por especialidad; no inventar asociaciones de autoescuela
+ // si el instructor no tiene esa información guardada.
+ const top=Math.max(...eligible.map(t=>teacherMatchStrength.get(String(t.id))||0));
+ const best=eligible.filter(t=>(teacherMatchStrength.get(String(t.id))||0)===top);
+ if(best.length===1)teacher=best[0];
 }
 if(teacher)$('teacher').value=teacher.id;
 else {$('teacher').value='';warnings.push(eligible.length>1?'Instructor ambiguo para '+(kind||'el curso')+': '+eligible.map(t=>t.name).join(' / '):teacherHits.length?'Instructor mencionado no compatible con '+(kind||'el curso'):'Instructor no identificado');}
