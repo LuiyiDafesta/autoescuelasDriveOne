@@ -915,75 +915,67 @@ function fullBalanceCourseName(raw){
  return c;
 }
 function exportGeneralBalanceXlsx(){
- const month=$('filterMonth').value;
- const mode=$('balanceExportMode')?.value||'todos';
+ const month=$('filterMonth').value,mode=$('balanceExportMode')?.value||'todos';
  const all=accountingRecords().filter(r=>(!month||String(r.date||'').startsWith(month))&&(mode==='todos'||paymentLabel(r)===mode));
- // Las transferencias se reúnen por ID del curso original. No generan ventas nuevas.
- const unique=new Map();
+ const num=x=>Number(x||0),rounded=x=>Math.round(x*100)/100;
+ // Los tramos transferidos forman una única venta; se suman comisiones y señas una sola vez.
+ const unique=new Map(),balances=new Map(),issues=[];
  for(const r of all){
-  const id=String(r.id||'')+'|'+String(r.school||'')+'|'+(r.errorVisitAccounting?'visita':'')+'|'+(r.cancellationAccounting?'cancelacion':'');
-  if(!unique.has(id))unique.set(id,{course:r.originalCourse||r.course||'Curso',method:paymentLabel(r),price:0,commission:0,gain:0,settlement:0,school:r.school,quantity:1});
-  const x=unique.get(id);
-  x.price+=Number(r.price||0);
-  x.commission+=Number(r.instructorShare||0);
-  x.gain+=Number(r.schoolShare||0)-Number(r.mpFee||0);
-  x.settlement+=Number(row(r).netToSchool||0);
+  const id=String(r.recordId||r.id||'')+'|'+String(r.school||'')+'|'+(r.errorVisitAccounting?'visita':'')+'|'+(r.cancellationAccounting?'cancelacion':'');
+  if(!unique.has(id))unique.set(id,{course:r.originalCourse||r.course||'Curso',method:paymentLabel(r),school:r.school,quantity:1,price:0,deposit:0,commission:0,gain:0,settlement:0,schoolHeld:0,instructorHeld:0,mpFee:0});
+  const x=unique.get(id),a=row(r);
+  x.price+=num(r.price);x.deposit+=num(r.deposit);x.commission+=num(r.instructorShare);
+  x.gain+=num(r.schoolShare)-num(r.mpFee);x.settlement+=num(a.netToSchool);
+  x.schoolHeld+=num(a.schoolHeld);x.instructorHeld+=num(a.instructorHeld);x.mpFee+=num(r.mpFee);
+  const k=String(r.school||'')+'|'+String(r.teacherId||r.teacherName||'');
+  balances.set(k,(balances.get(k)||0)+num(a.netToSchool));
  }
+ for(const [id,x] of unique){
+  // Conciliación: el precio total se distribuye entre seña/cobro escuela y cobro instructor.
+  if(Math.abs(x.price-x.schoolHeld-x.instructorHeld)>0.02)issues.push('Tenencia no concilia: '+id);
+  if(x.deposit<0||x.deposit>x.price+0.02)issues.push('Seña fuera del precio: '+id);
+  // Ganancia = lo que conserva la escuela + lo que le deben entregar - lo que debe pagar.
+  if(Math.abs((x.schoolHeld+x.settlement-x.mpFee)-x.gain)>0.02)issues.push('Ganancia no concilia: '+id);
+ }
+ if(issues.length){alert('No se descargó el balance: se detectaron '+issues.length+' diferencias entre señas, cobros y liquidaciones. Revisá los cursos afectados antes de exportar.\n\n'+issues.slice(0,4).join('\n'));return;}
  const grouped=new Map();
  for(const x of unique.values()){
-  // Diferentes tarifas, métodos y comisiones no se mezclan aunque el curso se llame igual.
-  const key=JSON.stringify([fullBalanceCourseName(x.course),x.method,x.price,x.commission,x.gain]);
-  if(!grouped.has(key))grouped.set(key,{...x,course:fullBalanceCourseName(x.course),quantity:0,priceTotal:0,commissionTotal:0,gainTotal:0,settlementTotal:0});
-  const g=grouped.get(key);g.quantity++;g.priceTotal+=x.price;g.commissionTotal+=x.commission;g.gainTotal+=x.gain;g.settlementTotal+=x.settlement;
+  const course=fullBalanceCourseName(x.course);
+  const key=JSON.stringify([course,x.method,x.price,x.commission,x.gain,Math.sign(x.settlement)]);
+  if(!grouped.has(key))grouped.set(key,{course,method:x.method,quantity:0,deposit:0,commission:0,gain:0,settlement:0});
+  const g=grouped.get(key);g.quantity++;g.deposit+=x.deposit;g.commission+=x.commission;g.gain+=x.gain;g.settlement+=x.settlement;
  }
- const gs=[...grouped.values()].sort((a,b)=>a.course.localeCompare(b.course,'es')||a.method.localeCompare(b.method,'es')||a.price-b.price);
- const sum=(key)=>gs.reduce((v,g)=>v+Number(g[key]||0),0);
+ const gs=[...grouped.values()].sort((a,b)=>a.course.localeCompare(b.course,'es')||a.method.localeCompare(b.method,'es'));
+ const sum=k=>rounded(gs.reduce((n,g)=>n+num(g[k]),0));
  const payments=db.payments.filter(p=>(!month||p.month===month));
- const paidIn=payments.filter(p=>p.direction==='teacher_to_school').reduce((v,p)=>v+Number(p.amount||0),0);
- const paidOut=payments.filter(p=>p.direction==='school_to_teacher').reduce((v,p)=>v+Number(p.amount||0),0);
- const net=sum('settlementTotal')-paidIn+paidOut;
- const period=month||'Todos los meses';
- // Las deudas se presentan por dirección, sin compensar saldos entre instructores ni escuelas.
- const obligations=new Map();
- for(const r of all){
-  const key=String(r.school||'')+'|'+String(r.teacherId||r.teacherName||'');
-  obligations.set(key,(obligations.get(key)||0)+Number(row(r).netToSchool||0));
- }
- // En el balance combinado, los movimientos de liquidación sí se pueden imputar completos.
- // En los filtros por medio de pago no se imputan pagos sin asociación a un curso específico.
+ // Los movimientos sin referencia al curso no se pueden distribuir de forma segura entre
+ // Efectivo y Tarjeta. Solo se aplican al balance combinado.
  if(mode==='todos')for(const p of payments){
-  const key=String(p.school||'')+'|'+String(p.teacherId||p.teacherName||'');
-  if(!obligations.has(key))continue;
-  const adjustment=p.direction==='teacher_to_school'?-Number(p.amount||0):Number(p.amount||0);
-  obligations.set(key,obligations.get(key)+adjustment);
+  const k=String(p.school||'')+'|'+String(p.teacherId||p.teacherName||'');
+  if(!balances.has(k))continue;
+  balances.set(k,balances.get(k)+(p.direction==='teacher_to_school'?-num(p.amount):num(p.amount)));
  }
- const dueSchool=[...obligations.values()].reduce((v,n)=>v+Math.max(0,n),0);
- const dueTeachers=[...obligations.values()].reduce((v,n)=>v+Math.max(0,-n),0);
+ const dueSchool=rounded([...balances.values()].reduce((n,v)=>n+Math.max(0,v),0));
+ const dueTeachers=rounded([...balances.values()].reduce((n,v)=>n+Math.max(0,-v),0));
+ const period=month||'Todos los meses';
  const rows=[
-  ['BALANCE GENERAL DE CURSOS'],
-  ['Mes',period],['Incluye',mode==='todos'?'Efectivo y Tarjeta':mode],[],
-  ['CURSO COMPLETO','FORMA DE PAGO','CANTIDAD DE CURSOS','COMISIÓN AUTOESCUELA $','COMISIÓN INSTRUCTOR $','INSTRUCTOR DEBE $','ESCUELA DEBE $'],
-  ...gs.map(g=>[g.course,g.method,g.quantity,g.gainTotal,g.commissionTotal,Math.max(0,g.settlementTotal),Math.max(0,-g.settlementTotal)]),
-  [],['TOTAL DE CURSOS','',sum('quantity'),sum('gainTotal'),sum('commissionTotal'),gs.reduce((v,g)=>v+Math.max(0,g.settlementTotal),0),gs.reduce((v,g)=>v+Math.max(0,-g.settlementTotal),0)],
-  [],['SALDOS FINALES PENDIENTES'],
-  ['LOS INSTRUCTORES DEBEN ENTREGAR A LAS AUTOESCUELAS','','','','','',dueSchool],
-  ['LAS AUTOESCUELAS DEBEN PAGAR A LOS INSTRUCTORES','','','','','',dueTeachers]
+  ['BALANCE GENERAL · CURSOS VENDIDOS'],['Período',period],['Forma de pago',mode==='todos'?'Efectivo + Tarjeta':mode],[],
+  ['CURSO','FORMA DE PAGO','CANTIDAD','SEÑAS EN ESCUELA','COMISIÓN AUTOESCUELA','COMISIÓN INSTRUCTOR','LIQUIDACIÓN DEL CURSO'],
+  ...gs.map(g=>[g.course,g.method,g.quantity,rounded(g.deposit),rounded(g.gain),rounded(g.commission),
+    g.settlement>0?'INSTRUCTOR ENTREGA $'+Math.round(g.settlement).toLocaleString('es-AR'):
+    g.settlement<0?'ESCUELA PAGA $'+Math.round(-g.settlement).toLocaleString('es-AR'):'SALDADO']),
+  [],['TOTAL DE CURSOS','',sum('quantity'),sum('deposit'),sum('gain'),sum('commission'),''],
+  [],['SALDOS PENDIENTES DE PAGO'],
+  ['INSTRUCTORES DEBEN ENTREGAR A ESCUELAS','','','','','',dueSchool],
+  ['ESCUELAS DEBEN PAGAR A INSTRUCTORES','','','','','',dueTeachers]
  ];
  if(!gs.length)rows.splice(5,0,['Sin cursos para el período y forma de pago elegidos']);
- const bySchool=new Map();
- for(const x of unique.values()){
-  const school=bySchool.get(x.school)||{courses:0,sales:0,commissions:0,gain:0,settlement:0};
-  school.courses++;school.sales+=x.price;school.commissions+=x.commission;school.gain+=x.gain;school.settlement+=x.settlement;bySchool.set(x.school,school);
- }
- const schoolRows=[['LIQUIDACIONES POR AUTOESCUELA'],['Período',period],[],['AUTOESCUELA','CURSOS','VENTAS $','COMISIONES $','GANANCIA ESCUELA $','PAGOS INSTRUCTOR A ESCUELA $','PAGOS ESCUELA A INSTRUCTOR $','SALDO A FAVOR ESCUELA $']];
+ const schoolRows=[['LIQUIDACIONES POR AUTOESCUELA'],['Período',period],[],['AUTOESCUELA','CURSOS','VENTAS $','SEÑAS EN ESCUELA $','COMISIÓN INSTRUCTOR $','COMISIÓN AUTOESCUELA $','INSTRUCTOR ENTREGA $','ESCUELA PAGA $']];
  for(const school of SCHOOLS){
-  const x=bySchool.get(school)||{courses:0,sales:0,commissions:0,gain:0,settlement:0};
-  const ps=payments.filter(p=>p.school===school);
-  const a=ps.filter(p=>p.direction==='teacher_to_school').reduce((v,p)=>v+Number(p.amount||0),0);
-  const b=ps.filter(p=>p.direction==='school_to_teacher').reduce((v,p)=>v+Number(p.amount||0),0);
-  schoolRows.push([school,x.courses,x.sales,x.commissions,x.gain,a,b,x.settlement-a+b]);
+  const rs=[...unique.values()].filter(x=>x.school===school);
+  const schoolBalances=[...balances.entries()].filter(([k])=>k.startsWith(school+'|')).map(([,v])=>v);
+  schoolRows.push([school,rs.length,rounded(rs.reduce((n,x)=>n+x.price,0)),rounded(rs.reduce((n,x)=>n+x.deposit,0)),rounded(rs.reduce((n,x)=>n+x.commission,0)),rounded(rs.reduce((n,x)=>n+x.gain,0)),rounded(schoolBalances.reduce((n,v)=>n+Math.max(0,v),0)),rounded(schoolBalances.reduce((n,v)=>n+Math.max(0,-v),0))]);
  }
-
  exportGroupedXlsx([{name:'Balance por cursos',rows},{name:'Liquidaciones por escuela',rows:schoolRows}], 'Balance_'+(mode==='todos'?'Efectivo_y_Tarjeta':mode)+'_'+(month||'todos_los_meses')+'.xlsx');
 }
 function exportGroupedXlsx(sheets,filename){
@@ -994,9 +986,9 @@ function exportGroupedXlsx(sheets,filename){
   const col=n=>{let x=n+1,out='';while(x){x--;out=String.fromCharCode(65+x%26)+out;x=Math.floor(x/26)}return out};
   const data=rows.map((r,i)=>{
    const label=String(r[0]||'');
-   const title=i===0||label.startsWith('AUTOESCUELA:')||label==='SALDOS FINALES PENDIENTES'||label.startsWith('TOTAL ');
+   const title=i===0||label.startsWith('AUTOESCUELA:')||label.startsWith('SALDOS PENDIENTES')||label.startsWith('TOTAL ');
    const header=['CURSO','AUTOESCUELA','CURSO COMPLETO'].includes(label);
-   const outcome=balance&&(label==='LOS INSTRUCTORES DEBEN ENTREGAR A LAS AUTOESCUELAS'||label==='LAS AUTOESCUELAS DEBEN PAGAR A LOS INSTRUCTORES');
+   const outcome=balance&&(label==='INSTRUCTORES DEBEN ENTREGAR A ESCUELAS'||label==='ESCUELAS DEBEN PAGAR A INSTRUCTORES');
    const cells=r.map((v,j)=>{
     if(v===null||v===undefined||v==='')return '';
     const ref=col(j)+(i+1);
@@ -1004,20 +996,20 @@ function exportGroupedXlsx(sheets,filename){
     if(balance){
      if(title)style=1;
      else if(header)style=3;
-     else if(outcome)style=label.startsWith('LOS INSTRUCTORES')?10:11;
-     else if(i>4&&i<rows.findIndex(x=>String(x[0]||'').startsWith('TOTAL DE CURSOS'))){
-      style=j===3?7:j===4?6:j===5?10:j===6?11:i%2===0?4:0;
+     else if(outcome)style=label.startsWith('INSTRUCTORES')?10:11;
+     else if(i>4&&i<rows.findIndex(x=>String(x[0]||'').startsWith('TOTALES'))){
+      style=j===3?5:j===4?7:j===5?6:j===6?(String(v).startsWith('ESCUELA PAGA')?11:String(v).startsWith('INSTRUCTOR ENTREGA')?10:8):i%2===0?4:0;
      }
     }
     if(typeof v==='number'&&Number.isFinite(v))return '<c r="'+ref+'" s="'+style+'"><v>'+v+'</v></c>';
     let str=String(v);if(/^[=+\-@]/.test(str))str="'"+str;
     return '<c r="'+ref+'" s="'+style+'" t="inlineStr"><is><t>'+xml(str)+'</t></is></c>';
    }).join('');
-   return '<row r="'+(i+1)+'" ht="'+(title?33:header?43:outcome?34:31)+'" customHeight="1">'+cells+'</row>';
+   return '<row r="'+(i+1)+'" ht="'+(title?33:header?43:outcome?38:31)+'" customHeight="1">'+cells+'</row>';
   }).join('');
-  const widths=balance?[44,20,23,29,29,24,24]:[38,20,21,22,22,26,26,26];
+  const widths=balance?[34,16,13,24,26,26,35]:[38,20,21,22,22,22,26,26,26];
   const cols=widths.map((w,i)=>'<col min="'+(i+1)+'" max="'+(i+1)+'" width="'+w+'" customWidth="1"/>').join('');
-  const merges=balance?'<mergeCells count="2"><mergeCell ref="A'+(rows.findIndex(r=>r[0]==='LOS INSTRUCTORES DEBEN ENTREGAR A LAS AUTOESCUELAS')+1)+':F'+(rows.findIndex(r=>r[0]==='LOS INSTRUCTORES DEBEN ENTREGAR A LAS AUTOESCUELAS')+1)+'"/><mergeCell ref="A'+(rows.findIndex(r=>r[0]==='LAS AUTOESCUELAS DEBEN PAGAR A LOS INSTRUCTORES')+1)+':F'+(rows.findIndex(r=>r[0]==='LAS AUTOESCUELAS DEBEN PAGAR A LOS INSTRUCTORES')+1)+'"/></mergeCells>':'';
+  const merges=balance?'<mergeCells count="2"><mergeCell ref="A'+(rows.findIndex(r=>r[0]==='INSTRUCTORES DEBEN ENTREGAR A ESCUELAS')+1)+':F'+(rows.findIndex(r=>r[0]==='INSTRUCTORES DEBEN ENTREGAR A ESCUELAS')+1)+'"/><mergeCell ref="A'+(rows.findIndex(r=>r[0]==='ESCUELAS DEBEN PAGAR A INSTRUCTORES')+1)+':F'+(rows.findIndex(r=>r[0]==='ESCUELAS DEBEN PAGAR A INSTRUCTORES')+1)+'"/></mergeCells>':'';
   return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetViews><sheetView workbookViewId="0" showGridLines="0"/></sheetViews><sheetFormatPr defaultRowHeight="27"/><cols>'+cols+'</cols><sheetData>'+data+'</sheetData>'+merges+'</worksheet>';
  }
  const entries={};
