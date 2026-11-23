@@ -501,7 +501,9 @@ const message=[
 '👤 *DATOS DEL ALUMNO*',
 '*Nombre:* '+saved.student,
 '*WhatsApp:* '+(saved.phone||'No informado'),
-'*Dirección:* '+saved.address,'',
+'*Dirección:* '+saved.address,
+'*Disponibilidad:* '+(saved.availabilityCombined||[saved.availableDays,saved.availableHours].filter(Boolean).join(' / ')||'A coordinar'),
+...(saved.classDates?['*Fechas de clases:* '+saved.classDates]:[]),'',
 '🚗 *CURSO CONTRATADO*',
 '*Curso:* '+saved.course,...(saved.motoVehicle?['*MOTO PARA LAS CLASES:* '+saved.motoVehicle]:[]),
 '*Forma de pago:* '+(isCard?'TARJETA':'EFECTIVO'),'',
@@ -518,11 +520,9 @@ const message=[
 
 ...(!saved.paymentPlan&&!isCard?[
 '*Precio total:* '+money(saved.price),
-...(saved.deposit?['*Seña recibida por la escuela:* '+money(saved.deposit),'*COBRAR SALDO PENDIENTE:* '+money(Math.max(0,saved.price-saved.deposit))]:['*COBRAR EL TOTAL DEL CURSO:* '+money(saved.price)]),
+...(saved.deposit?['*Seña recibida por la escuela:* '+money(saved.deposit),'*TOTAL A COBRAR AL ALUMNO: '+money(Math.max(0,saved.price-saved.deposit))+'*']:['*TOTAL A COBRAR AL ALUMNO: '+money(saved.price)+'*']),
 '*Responsable del cobro:* INSTRUCTOR — EFECTIVO'
 ]:saved.paymentPlan?[]:['*Pago con tarjeta a la autoescuela.*','⚠️ *NO COBRAR AL ALUMNO.*']),'',
-'📅 *DISPONIBILIDAD DEL ALUMNO*',
-'*Días y horarios:* '+(saved.availabilityCombined||[saved.availableDays,saved.availableHours].filter(Boolean).join(' / ')||'A coordinar'),...(saved.classDates?['*Fechas de clases:* '+saved.classDates]:[]),'',
 ...(showObservation?['📝 *OBSERVACIONES*',observation,'']:[]),
 '📲 *IMPORTANTE*',
 '⏰ *Contactá al alumno dentro de las próximas 12 hs* para coordinar el inicio de sus clases.'
