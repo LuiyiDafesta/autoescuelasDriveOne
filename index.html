@@ -519,7 +519,7 @@ const message=[
 ]:[]),
 
 ...(!saved.paymentPlan&&!isCard?[
-...(saved.deposit?['*Precio total:* '+money(saved.price),['*Seña recibida por la escuela:* '+money(saved.deposit),'*TOTAL A COBRAR AL ALUMNO: '+money(Math.max(0,saved.price-saved.deposit))+'*']:['*TOTAL A COBRAR AL ALUMNO: '+money(saved.price)+'*']),
+...(saved.deposit?['*Precio total:* '+money(saved.price),'*Seña recibida por la escuela:* '+money(saved.deposit),'*TOTAL A COBRAR AL ALUMNO: '+money(Math.max(0,saved.price-saved.deposit))+'*']:['*TOTAL A COBRAR AL ALUMNO: '+money(saved.price)+'*']),
 '*Responsable del cobro:* INSTRUCTOR — EFECTIVO'
 ]:saved.paymentPlan?[]:['*Pago con tarjeta a la autoescuela.*','⚠️ *NO COBRAR AL ALUMNO.*']),'',
 ...(showObservation?['📝 *OBSERVACIONES*',observation,'']:[]),
@@ -645,8 +645,9 @@ function instructorWhatsAppMessage(r,t){
  const cleaned=cleanInstructorStudentFields(r);
  const availability=cleaned.availability||'A coordinar';
  const lines=[
-  '🚘 *CURSO ASIGNADO*',
-  '🏫 *'+r.school+'*',
+  '🚘 *NUEVO ALUMNO ASIGNADO*',
+  '━━━━━━━━━━━━━━━━',
+  '🏫 *AUTOESCUELA*',r.school,
   '',
   '👤 *DATOS DEL ALUMNO*',
   '*Nombre:* '+cleaned.student,
@@ -654,11 +655,11 @@ function instructorWhatsAppMessage(r,t){
   '*Dirección:* '+(cleaned.address||'No informada'),
   '*Disponibilidad:* '+availability,
   '',
-  '🚗 *INFORMACIÓN DEL CURSO*',
+  '🚗 *CURSO CONTRATADO*',
   ...(transferred?['*Este curso es a completar. Lo tenía otro instructor.*','','*CURSO A COMPLETAR: '+(/moto/i.test(r.course)?'MOTO':/autom[aá]tico/i.test(r.course)?'AUTO AUTOMÁTICO':'AUTO MANUAL')+' X '+hours+' '+(hours===1?'CLASE':'CLASES')+'*']:['*Curso:* '+r.course,...(r.motoVehicle?['*MOTO PARA LAS CLASES:* '+r.motoVehicle]:[]),'*Instructor:* '+t.name,'*CLASES ASIGNADAS: '+hours+'*']),
   ...(transferred&&r.motoVehicle?['*MOTO PARA LAS CLASES:* '+r.motoVehicle]:[]),
   '',
-  '💰 *ESTADO DEL PAGO*'
+  '💰 *COBRO DEL CURSO*'
  ];
  if(paidFull){
   lines.push('✅ *PAGADO COMPLETAMENTE*','El alumno abonó el curso a la autoescuela.','','⛔ *NO COBRAR NADA AL ALUMNO.*');
@@ -666,10 +667,15 @@ function instructorWhatsAppMessage(r,t){
   const installments=r.paymentPlan.installments||[];
   lines.push('*PAGO EN DOS MITADES*','*Primera clase:* '+money(installments[0]?.amount||0),'*Tercera clase:* '+money(installments[1]?.amount||0),'*Responsable del cobro:* '+(r.paymentPlan.payer==='escuela'?'AUTOESCUELA':'INSTRUCTOR'),'Confirmar las cuotas ya abonadas antes de cobrar.');
  }else{
-  const collect=transferred?transferCollectText(r,assignment||{}):(Number(r.deposit||0)>0?'COBRAR SALDO PENDIENTE: ':'COBRAR TOTAL DEL CURSO: ')+money(due);
-  lines.push('*'+(due===0?'PAGADO COMPLETAMENTE':'PAGO EN EFECTIVO')+'*','*Indicación de cobro:* '+collect);
+  const collect=transferred?transferCollectText(r,assignment||{}):null;
+  if(transferred){
+   lines.push('*PAGO EN EFECTIVO*','*Indicación de cobro:* '+collect);
+  }else{
+   if(Number(r.deposit||0)>0)lines.push('*Precio total:* '+money(r.price),'*Seña recibida por la escuela:* '+money(r.deposit));
+   lines.push('*TOTAL A COBRAR AL ALUMNO: '+money(due)+'*','*Responsable del cobro:* INSTRUCTOR — EFECTIVO');
+  }
  }
- lines.push('','📲 *IMPORTANTE*','Contactá al alumno dentro de las próximas 12 horas para coordinar sus clases.');
+ lines.push('','📲 *IMPORTANTE*','⏰ *Contactá al alumno dentro de las próximas 12 hs* para coordinar el inicio de sus clases.');
  return lines.join('\n');
 }
 function sendInstructorCourse(r,t){
