@@ -868,32 +868,39 @@ function exportAccountXlsx(){
  const selected=$('accountSchool').value;
  const schools=SCHOOLS.filter(s=>(!selected||selected===s)&&(rs.some(r=>r.school===s)||ps.some(p=>p.school===s)));
  if(!schools.length){alert('No hay cursos ni movimientos para exportar.');return}
- const sheets=[],summary=[['CUENTA CORRIENTE DEL INSTRUCTOR'],['Instructor',teacher],['Mes',month],['Alcance',selected||'Todas las autoescuelas'],[],['AUTOESCUELA','CURSOS','COMISIONES','SALDO','QUIÉN DEBE PAGAR']];
- const allRows=[];
+ const sheets=[];
+ const summary=[['CUENTA DEL INSTRUCTOR'],['Instructor',teacher],['Mes',month],[],['RESUMEN POR AUTOESCUELA'],['AUTOESCUELA','QUIÉN PAGA','IMPORTE']];
  for(const school of schools){
-  const cr=rs.filter(r=>r.school===school).sort((a,b)=>String(a.date).localeCompare(String(b.date)));
+  const cr=rs.filter(r=>r.school===school).sort((a,b)=>String(a.date).localeCompare(String(b.date))||String(a.student).localeCompare(String(b.student),'es'));
   const mv=ps.filter(x=>x.school===school).sort((a,b)=>String(a.date).localeCompare(String(b.date)));
   const gross=cr.reduce((v,r)=>v+row(r).netToSchool,0);
   const paidIn=mv.filter(x=>x.direction==='teacher_to_school').reduce((v,x)=>v+Number(x.amount||0),0);
   const paidOut=mv.filter(x=>x.direction==='school_to_teacher').reduce((v,x)=>v+Number(x.amount||0),0);
   const net=gross-paidIn+paidOut;
-  const who=net>0?'INSTRUCTOR ENTREGA A ESCUELA':net<0?'ESCUELA PAGA AL INSTRUCTOR':'CUENTA SALDADA';
+  const who=net>0?'INSTRUCTOR A ESCUELA':net<0?'ESCUELA A INSTRUCTOR':'SALDADA';
   const commission=cr.reduce((v,r)=>v+Number(r.instructorShare||0),0);
-  summary.push([school,cr.length,commission,Math.abs(net),who]);
-  const rows=[['CUENTA CORRIENTE — '+school],['Instructor',teacher],['Mes',month],[],['RESUMEN'],['Cursos',cr.length],['Comisiones del instructor',commission],['Instructor entregó a escuela',paidIn],['Escuela pagó al instructor',paidOut],['SALDO PENDIENTE',Math.abs(net)],['QUIÉN DEBE PAGAR',who],[],['CURSOS ASIGNADOS'],['Fecha','Alumno','Curso','Clases / horas','Precio total (referencia)','Seña escuela (referencia)','Comisión instructor','Dinero asignado a instructor','Saldo a favor de escuela (+) / instructor (-)']];
+  summary.push([school,who,Math.abs(net)]);
+  const rows=[['CUENTA · '+school],['Instructor',teacher],['Mes',month],[],['SALDO FINAL','QUIÉN PAGA','IMPORTE'],['',who,Math.abs(net)],[],['RESUMEN DE LA ESCUELA'],['Cursos asignados',cr.length],['Comisiones del instructor',commission],['Instructor entregó a escuela',paidIn],['Escuela pagó al instructor',paidOut],[],['CURSOS DE ESTA AUTOESCUELA'],['FECHA / ALUMNO','CURSO','COMISIÓN']];
   for(const r of cr){
-   const parent=db.records.find(z=>String(z.id)===String(r.recordId||r.id))||r,c=row(r);
-   rows.push([r.date,r.student,r.originalCourse||r.course,r.assignedHours??'',Number(r.originalPrice??parent.price??r.price??0),Number(parent.deposit||0),Number(r.instructorShare||0),Number(c.instructorHeld||0),Number(c.netToSchool||0)]);
+   const c=row(r),parent=db.records.find(z=>String(z.id)===String(r.recordId||r.id))||r;
+   const balance=Number(c.netToSchool||0);
+   const balanceWho=balance>0?'Instructor a escuela':balance<0?'Escuela a instructor':'Saldado';
+   rows.push([String(r.date||'')+' · '+String(r.student||''),r.originalCourse||r.course,Number(r.instructorShare||0)]);
+   rows.push(['Precio del curso',Number(r.originalPrice??parent.price??r.price??0),'Referencia, no sumar en transferencias']);
+   rows.push(['Seña recibida por escuela',Number(parent.deposit||0),'Referencia del curso completo']);
+   rows.push(['Dinero a cobrar por instructor',Number(c.instructorHeld||0),'Puede estar pendiente del alumno']);
+   rows.push(['Resultado de este curso',balanceWho,Math.abs(balance)]);
+   rows.push([]);
   }
-  rows.push([],['MOVIMIENTOS DE DINERO'],['Fecha','Quién pagó','Importe','Concepto','Observaciones']);
-  for(const m of mv)rows.push([m.date,m.direction==='teacher_to_school'?'Instructor a escuela':'Escuela a instructor',Number(m.amount||0),m.type||'',m.notes||'']);
-  rows.push([],['NOTAS'],['Precio y seña son referencias del curso completo: no sumar varias veces si hubo transferencia.'],['Los saldos son proyectados, incluso si el alumno todavía debe dinero.'],['Cada autoescuela se liquida por separado.']);
+  if(!cr.length)rows.push(['Sin cursos en este período']);
+  rows.push(['MOVIMIENTOS REGISTRADOS'],['FECHA','QUIÉN PAGÓ','IMPORTE']);
+  for(const m of mv)rows.push([m.date,m.direction==='teacher_to_school'?'Instructor a escuela':'Escuela a instructor',Number(m.amount||0)]);
+  if(!mv.length)rows.push(['Sin movimientos registrados']);
+  rows.push([],['RESULTADO FINAL','QUIÉN PAGA','IMPORTE'],['',who,Math.abs(net)],[],['Los saldos incluyen cursos activos aunque el alumno aún deba dinero.'],['Cada autoescuela se liquida por separado.']);
   sheets.push({name:school.slice(0,31),rows});
-  allRows.push(...cr.map(r=>[school,r.date,r.student,r.originalCourse||r.course,Number(r.instructorShare||0),Number(row(r).netToSchool||0)]));
  }
- summary.push([],['IMPORTANTE'],['Cada autoescuela tiene su propio saldo; no se compensan entre escuelas.'],['Las comisiones incluyen los cursos activos aunque el alumno no haya pagado.'],['Los precios y señas de cursos compartidos son referencias; no representan ventas adicionales.']);
+ summary.push([],['CÓMO LEER ESTA CUENTA'],['Cada fila corresponde a una autoescuela.'],['El importe indica cuánto debe pagar la parte indicada.'],['No se compensan saldos entre autoescuelas.'],['Abrí la pestaña de cada escuela para ver sus alumnos y cursos.']);
  sheets.unshift({name:'Resumen',rows:summary});
- if(schools.length>1)sheets.push({name:'Todos los cursos',rows:[['TODOS LOS CURSOS DEL INSTRUCTOR'],['Instructor',teacher],['Mes',month],[],['Autoescuela','Fecha','Alumno','Curso','Comisión instructor','Saldo proyectado a escuela (+) / instructor (-)'],...allRows]});
  function xml(s){return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&apos;')}
  const enc=new TextEncoder(),bytes=t=>enc.encode(t);
  function sheetXml(rows){
@@ -905,7 +912,7 @@ function exportAccountXlsx(){
    let str=String(v);if(/^[=+\-@]/.test(str))str="'"+str;
    return '<c r="'+ref+'" s="'+style+'" t="inlineStr"><is><t>'+xml(str)+'</t></is></c>';
   }).join('')+'</row>').join('');
-  return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetViews><sheetView workbookViewId="0"/></sheetViews><sheetFormatPr defaultRowHeight="19"/><cols><col min="1" max="1" width="30" customWidth="1"/><col min="2" max="2" width="27" customWidth="1"/><col min="3" max="3" width="28" customWidth="1"/><col min="4" max="4" width="28" customWidth="1"/><col min="5" max="9" width="24" customWidth="1"/></cols><sheetData>'+data+'</sheetData></worksheet>';
+  return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetViews><sheetView workbookViewId="0"/></sheetViews><sheetFormatPr defaultRowHeight="19"/><cols><col min="1" max="1" width="37" customWidth="1"/><col min="2" max="2" width="30" customWidth="1"/><col min="3" max="3" width="20" customWidth="1"/></cols><sheetData>'+data+'</sheetData></worksheet>';
  }
  const entries={};
  entries['[Content_Types].xml']='<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>'+sheets.map((_,i)=>'<Override PartName="/xl/worksheets/sheet'+(i+1)+'.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>').join('')+'</Types>';
