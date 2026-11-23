@@ -880,39 +880,60 @@ function liquidRows(groups){return groups.map(g=>[g.course+' · '+g.method,g.cou
 function instructorExcelSheets(records,payments,teacher,month,selectedSchool){
  const num=v=>Number(v||0),round=v=>Math.round(v*100)/100;
  const schools=SCHOOLS.filter(s=>(!selectedSchool||selectedSchool===s)&&(records.some(r=>r.school===s)||payments.some(p=>p.school===s)));
- const overview=[['CUENTA DE '+teacher],['Mes',month],[],['AUTOESCUELA','CURSOS','SALDO $','QUIÉN PAGA']];
- const sheets=[];let globalNet=0,grandCourses=0,grandDeposit=0,grandGain=0,grandCommission=0;
+ const sheets=[],allGroups=[],schoolResults=[];
+ let grandCourses=0,grandDeposit=0,grandGain=0,grandCommission=0,globalNet=0;
  for(const school of schools){
   const rs=records.filter(r=>r.school===school),ps=payments.filter(p=>p.school===school);
-  const grouped=new Map(),depositsSeen=new Set();
+  const grouped=new Map(),seen=new Set();
   for(const r of rs){
-   const course=fullBalanceCourseName(r.originalCourse||r.course),method=paymentLabel(r),key=JSON.stringify([course,method]);
-   if(!grouped.has(key))grouped.set(key,{course,method,qty:0,deposit:0,gain:0,commission:0,net:0,ids:new Set()});
+   const course=fullBalanceCourseName(r.originalCourse||r.course),method=paymentLabel(r);
+   const key=JSON.stringify([course,method,Number(r.price||0),Number(r.instructorShare||0),Math.sign(row(r).netToSchool)]);
+   if(!grouped.has(key))grouped.set(key,{course,method,qty:0,deposit:0,gain:0,commission:0,net:0});
    const g=grouped.get(key),id=String(r.recordId||r.id||'')+'|'+school;
-   if(!g.ids.has(id)){g.ids.add(id);g.qty++}
-   if(!depositsSeen.has(id)){const parent=db.records.find(z=>String(z.id)===String(r.recordId||r.id));g.deposit+=num(parent?.deposit??r.deposit);depositsSeen.add(id)}
-   g.gain+=num(r.schoolShare)-num(r.mpFee);g.commission+=num(r.instructorShare);g.net+=num(row(r).netToSchool);
+   if(!seen.has(id)){
+    seen.add(id);g.qty++;
+    const parent=db.records.find(z=>String(z.id)===String(r.recordId||r.id));
+    g.deposit+=num(parent?.deposit??r.deposit);
+   }
+   g.gain+=num(r.schoolShare)-num(r.mpFee);
+   g.commission+=num(r.instructorShare);
+   g.net+=num(row(r).netToSchool);
   }
-  const groups=[...grouped.values()].sort((a,b)=>a.course.localeCompare(b.course,'es')||a.method.localeCompare(b.method,'es'));
-  const sum=k=>round(groups.reduce((v,g)=>v+num(g[k]),0));
+  const gs=[...grouped.values()].sort((a,b)=>a.course.localeCompare(b.course,'es')||a.method.localeCompare(b.method,'es'));
+  const sum=k=>round(gs.reduce((v,g)=>v+num(g[k]),0));
   const delivered=round(ps.filter(p=>p.direction==='teacher_to_school').reduce((v,p)=>v+num(p.amount),0));
   const paid=round(ps.filter(p=>p.direction==='school_to_teacher').reduce((v,p)=>v+num(p.amount),0));
-  const net=round(sum('net')-delivered+paid);globalNet+=net;
-  grandCourses+=sum('qty');grandDeposit+=sum('deposit');grandGain+=sum('gain');grandCommission+=sum('commission');
-  const who=net>0?'INSTRUCTOR ENTREGA A ESCUELA':net<0?'ESCUELA PAGA AL INSTRUCTOR':'SALDADO';
-  overview.push([school,sum('qty'),Math.abs(net),who]);
-  const rows=[
-   ['CUENTA · '+teacher],['Autoescuela',school],['Mes',month],[],
-   ['CURSO','PAGO','CANT.','SEÑAS $','COM. ESCUELA $','COM. INSTRUCTOR $','LIQUIDACIÓN $'],
-   ...groups.map(g=>[g.course,g.method,g.qty,round(g.deposit),round(g.gain),round(g.commission),round(g.net)]),
-   ['TOTAL CURSOS','',sum('qty'),sum('deposit'),sum('gain'),sum('commission'),round(sum('net'))],
-   [],['PAGOS REGISTRADOS','',round(delivered-paid)],
-   ['RESULTADO FINAL',who,Math.abs(net)]
-  ];
+  const net=round(sum('net')-delivered+paid);
+  globalNet+=net;grandCourses+=sum('qty');grandDeposit+=sum('deposit');grandGain+=sum('gain');grandCommission+=sum('commission');
+  schoolResults.push({school,net,qty:sum('qty')});
+  allGroups.push(...gs.map(g=>({...g,school})));
+  const rows=[['CUENTA DE '+teacher+' · '+school],['Período',month],[],
+   ['CURSO COMPLETO','PAGO','CANTIDAD','SEÑAS EN ESCUELA ($)','COMISIÓN AUTOESCUELA','COMISIÓN INSTRUCTOR','QUIÉN PAGA Y CUÁNTO'],
+   ...gs.map(g=>[g.course,g.method,g.qty,round(g.deposit),round(g.gain),round(g.commission),g.net>0?'INSTRUCTOR ENTREGA $'+Math.round(g.net).toLocaleString('es-AR'):g.net<0?'ESCUELA PAGA $'+Math.round(-g.net).toLocaleString('es-AR'):'SALDADO']),
+   ['TOTAL DE CURSOS','',sum('qty'),sum('deposit'),sum('gain'),sum('commission'),''],
+   ['TOTAL SEÑAS COBRADAS POR LA ESCUELA','','',sum('deposit')],
+   [],['RESULTADO FINAL NETO DE '+school],
+   ['QUIÉN DEBE PAGAR',net>0?'INSTRUCTOR → AUTOESCUELA':net<0?'AUTOESCUELA → INSTRUCTOR':'SALDADO'],
+   ['IMPORTE NETO A LIQUIDAR','','','','','',Math.abs(net)]];
   sheets.push({name:school.slice(0,31),rows});
  }
- const final=round(globalNet),direction=final>0?'INSTRUCTORES → AUTOESCUELAS':final<0?'AUTOESCUELAS → INSTRUCTORES':'SALDADO';
- overview.push([],['TOTAL CURSOS',grandCourses],['TOTAL SEÑAS $',round(grandDeposit)],['COMISIÓN ESCUELAS $',round(grandGain)],['COMISIÓN INSTRUCTORES $',round(grandCommission)],[],['RESULTADO NETO GENERAL',Math.abs(final),direction]);
+ const groupedAll=new Map();
+ for(const g of allGroups){const key=JSON.stringify([g.course,g.method]);
+  if(!groupedAll.has(key))groupedAll.set(key,{course:g.course,method:g.method,qty:0,deposit:0,gain:0,commission:0,net:0});
+  const a=groupedAll.get(key);for(const k of ['qty','deposit','gain','commission','net'])a[k]+=num(g[k]);
+ }
+ const gs=[...groupedAll.values()].sort((a,b)=>a.course.localeCompare(b.course,'es')||a.method.localeCompare(b.method,'es'));
+ const net=round(globalNet);
+ const overview=[['CUENTA DE '+teacher],['Período',month],[],
+  ['CURSO COMPLETO','PAGO','CANTIDAD','SEÑAS EN ESCUELA ($)','COMISIÓN AUTOESCUELA','COMISIÓN INSTRUCTOR','QUIÉN PAGA Y CUÁNTO'],
+  ...gs.map(g=>[g.course,g.method,g.qty,round(g.deposit),round(g.gain),round(g.commission),g.net>0?'INSTRUCTOR ENTREGA $'+Math.round(g.net).toLocaleString('es-AR'):g.net<0?'ESCUELA PAGA $'+Math.round(-g.net).toLocaleString('es-AR'):'SALDADO']),
+  ['TOTAL DE CURSOS','',grandCourses,round(grandDeposit),round(grandGain),round(grandCommission),''],
+  ['TOTAL SEÑAS COBRADAS POR LAS ESCUELAS','','',round(grandDeposit)],
+  [],['RESULTADO FINAL NETO DEL INSTRUCTOR'],
+  ['QUIÉN DEBE PAGAR',net>0?'INSTRUCTOR → AUTOESCUELAS':net<0?'AUTOESCUELAS → INSTRUCTOR':'SALDADO'],
+  ['IMPORTE NETO A LIQUIDAR','','','','','',Math.abs(net)],
+  [],['SALDOS POR AUTOESCUELA'],['AUTOESCUELA','CURSOS','IMPORTE $','QUIÉN PAGA'],
+  ...schoolResults.map(x=>[x.school,x.qty,Math.abs(x.net),x.net>0?'INSTRUCTOR ENTREGA':x.net<0?'ESCUELA PAGA':'SALDADO'])];
  sheets.unshift({name:'Resumen',rows:overview});
  return sheets;
 }
@@ -923,7 +944,7 @@ function exportAccountXlsx(){
  const sheets=instructorExcelSheets(records,payments,teacher,month,selected);
  if(sheets.length===1){alert('No hay cursos ni movimientos para exportar.');return;}
  const safe=teacher.normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/gi,'_').replace(/^_|_$/g,'');
- exportGroupedXlsx(sheets,'Cuenta_'+safe+'_'+month+'.xlsx');
+ exportGroupedXlsx(sheets,'Cuenta_CON_SENAS_'+safe+'_'+month+'.xlsx');
 }
 function exportAllInstructorsXlsx(){
  const month=$('accountMonth').value,records=accountingRecords().filter(r=>String(r.date||'').startsWith(month)),payments=db.payments.filter(p=>p.month===month);
@@ -1027,24 +1048,25 @@ function exportGroupedXlsx(sheets,filename){
  function xml(s){return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&apos;')}
  const enc=new TextEncoder(),bytes=t=>enc.encode(t);
  function sheetXml(rows, sheetName){
-  const instructorSheet=sheetName!=='Resumen'&&sheetName!=='Balance por cursos'&&sheetName!=='Liquidaciones por escuela'&&rows.some(r=>r[0]==='CURSO');
+  const instructorSheet=sheetName!=='Resumen'&&sheetName!=='Balance por cursos'&&sheetName!=='Liquidaciones por escuela'&&rows.some(r=>r[0]==='CURSO COMPLETO');
   const instructorSummary=sheetName==='Resumen'&&rows.some(r=>String(r[0]||'').startsWith('CUENTA DE '));
-  const balance=sheetName==='Balance por cursos'||instructorSheet;
+  const balance=sheetName==='Balance por cursos'||instructorSheet||instructorSummary;
   const col=n=>{let x=n+1,out='';while(x){x--;out=String.fromCharCode(65+x%26)+out;x=Math.floor(x/26)}return out};
   const data=rows.map((r,i)=>{
    const label=String(r[0]||'');
-   const title=i===0||label.startsWith('AUTOESCUELA:')||label.startsWith('SALDOS PENDIENTES')||label.startsWith('TOTAL ')||label.startsWith('RESULTADO FINAL')||label.startsWith('RESULTADO NETO GENERAL');
+   const title=i===0||label==='RESULTADO FINAL NETO'||label==='DETALLE POR AUTOESCUELA'||label.startsWith('AUTOESCUELA:')||label.startsWith('SALDOS PENDIENTES')||label.startsWith('TOTAL ')||label.startsWith('RESULTADO FINAL')||label.startsWith('RESULTADO NETO GENERAL');
    const header=['CURSO','AUTOESCUELA','CURSO COMPLETO'].includes(label);
-   const outcome=(balance||instructorSummary)&&(label==='RESULTADO FINAL'||label==='RESULTADO NETO GENERAL'||label==='QUIÉN DEBE PAGAR'||label==='IMPORTE NETO A LIQUIDAR');
+   const outcome=(balance||instructorSummary)&&(label.startsWith('INSTRUCTOR ENTREGA A ESCUELAS')||label.startsWith('ESCUELAS PAGAN AL INSTRUCTOR')||label==='CUENTAS SALDADAS'||label==='RESULTADO FINAL'||label==='RESULTADO NETO GENERAL'||label==='QUIÉN DEBE PAGAR'||label==='IMPORTE NETO A LIQUIDAR');
    const cells=r.map((v,j)=>{
     if(v===null||v===undefined||v==='')return '';
     const ref=col(j)+(i+1);
     let style=title?1:header?3:typeof v==='number'?2:0;
+    
     if(balance){
      if(title)style=1;
      else if(header)style=3;
      else if(outcome)style=label==='IMPORTE NETO A LIQUIDAR'||label==='RESULTADO FINAL'?10:9;
-     else if(i>4&&i<(instructorSheet?rows.findIndex(x=>String(x[0]||'')==='TOTAL CURSOS'):rows.findIndex(x=>String(x[0]||'')==='TOTAL DE CURSOS'))){
+     else if(i>3&&i<rows.findIndex(x=>String(x[0]||'')==='TOTAL DE CURSOS')){
       style=j===3?5:j===4?7:j===5?6:j===6?(String(v).startsWith('ESCUELA PAGA')?11:String(v).startsWith('INSTRUCTOR ENTREGA')?10:8):i%2===0?4:0;
      }
     }
@@ -1054,9 +1076,9 @@ function exportGroupedXlsx(sheets,filename){
    }).join('');
    return '<row r="'+(i+1)+'" ht="'+(title?33:header?43:outcome?38:31)+'" customHeight="1">'+cells+'</row>';
   }).join('');
-  const widths=instructorSummary?[34,18,22,35]:instructorSheet?[32,13,10,16,21,21,19]:balance?[32,14,12,19,24,23,34]:[38,20,21,22,22,22,26,26,26];
+  const widths=balance?[32,14,12,19,24,23,34]:[38,20,21,22,22,22,26,26,26];
   const cols=widths.map((w,i)=>'<col min="'+(i+1)+'" max="'+(i+1)+'" width="'+w+'" customWidth="1"/>').join('');
-  const merges=balance&&!instructorSheet?(()=>{const i=rows.findIndex(r=>r[0]==='IMPORTE NETO A LIQUIDAR')+1;return i>0?'<mergeCells count="1"><mergeCell ref="A'+i+':F'+i+'"/></mergeCells>':''})():'';
+  const merges=balance?(()=>{const i=rows.findIndex(r=>r[0]==='IMPORTE NETO A LIQUIDAR')+1;return i>0?'<mergeCells count="1"><mergeCell ref="A'+i+':F'+i+'"/></mergeCells>':''})():'';
   return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetViews><sheetView workbookViewId="0" showGridLines="0"><pane ySplit="5" topLeftCell="A6" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews><sheetFormatPr defaultRowHeight="27"/><cols>'+cols+'</cols><sheetData>'+data+'</sheetData>'+merges+'</worksheet>';
  }
  const entries={};
