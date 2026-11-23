@@ -566,14 +566,20 @@ $('resetTariffSchool').onclick=()=>{const school=$('tariffSchool').value;if(!con
   const x=row(r),n=x.netToSchool,rawHours=r.assignedHours,parsedHours=Number(rawHours),courseHours=totalHours({course:r.originalCourse||r.course}),assigned=rawHours!==undefined&&rawHours!==null&&String(rawHours).trim()!==""&&Number.isFinite(parsedHours)&&parsedHours>=0?parsedHours:(courseHours>0?courseHours:null),assignedText=assigned===null?"Cantidad de clases por verificar":assigned+" "+(assigned===1?"clase":"clases"),original=r.originalCourse||r.course;
   const shared=!!r.originalCourse,received=r.transferRole==='received';
   const originalPrice=Number(r.originalPrice??r.price??0);
+  const parent=db.records.find(z=>String(z.id)===String(r.recordId||r.id))||r;
+  const depositRegistered=Number(parent.deposit||0);
+  const isMoto=/^moto/i.test(String(original));
+  const motoPlan=motoFiveSessionPlan({course:original});
+  const sessionCount=motoPlan&&assigned!==null?assigned/motoPlan.hoursPerSession:null;
+  const displayClasses=motoPlan&&sessionCount!==null?(Number.isInteger(sessionCount)?sessionCount+' '+(sessionCount===1?'clase':'clases')+' de '+motoPlan.sessions+' ('+assigned+' horas)':assigned+' horas · sesiones por verificar'):assignedText;
   const collectedByTeacher=x.instructorHeld;
   return '<article class="account-course-card"><div class="account-course-head"><div><div class="account-course-label">ALUMNO</div><strong>'+escape(r.student)+'</strong><div class="muted" style="font-size:.85rem;margin-top:4px">Inscripción: '+escape(r.date)+'</div></div><span class="account-course-tag">'+(shared?'Curso compartido':'Curso completo')+'</span></div>'+
-   '<div class="account-course-hero"><span>CLASES QUE REALIZA ESTE INSTRUCTOR</span><strong>'+assignedText+'</strong><small>Curso original: '+escape(original)+'</small></div>'+
+   '<div class="account-course-hero"><span>CLASES QUE REALIZA ESTE INSTRUCTOR</span><strong>'+displayClasses+'</strong><small>Curso original: '+escape(original)+'</small></div>'+
    (shared?'<p class="account-course-note">'+(received?'Estas clases fueron asignadas desde otro instructor.':'Las clases restantes fueron asignadas a otro instructor.')+'</p>':'')+
    '<div class="account-course-facts">'+
    '<div><span>Precio total del curso (una sola venta)</span><b>'+money(originalPrice)+'</b></div>'+
    '<div><span>Forma de pago</span><b>'+escape(paymentLabel(r))+'</b></div>'+
-   '<div><span>Seña recibida por la escuela</span><b>'+money(received?0:r.deposit)+'</b></div>'+
+   '<div><span>Seña del curso en la autoescuela (referencia, no se duplica)</span><b>'+(isMoto&&depositRegistered===0?'⚠ Seña de $40.000 pendiente de revisar en la inscripción':money(depositRegistered))+'</b></div>'+
    '<div><span>Dinero a cobrar del alumno</span><b>'+money(collectedByTeacher)+'</b></div>'+
    '<div><span>'+(assigned===null?'Comisión del instructor':'Comisión por sus '+assigned+' clases')+'</span><b>'+money(r.instructorShare)+'</b></div>'+
    '<div><span>Pendiente del alumno (informativo)</span><b>'+money(actualStudentDue(r))+'</b></div></div>'+
