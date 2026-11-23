@@ -868,58 +868,48 @@ function exportAccountXlsx(){
  const selected=$('accountSchool').value;
  const schools=SCHOOLS.filter(s=>(!selected||selected===s)&&(rs.some(r=>r.school===s)||ps.some(p=>p.school===s)));
  if(!schools.length){alert('No hay cursos ni movimientos para exportar.');return}
- const sheets=[];
- const summary=[['CUENTA DEL INSTRUCTOR'],['Instructor',teacher],['Mes',month],[],['RESUMEN POR AUTOESCUELA'],['AUTOESCUELA','QUIÉN PAGA','IMPORTE']];
+ const sheets=[],summary=[['CUENTA CORRIENTE · '+teacher],['Mes',month],[],['RESUMEN GENERAL · TODAS LAS ESCUELAS'],['AUTOESCUELA','QUIÉN DEBE PAGAR','SALDO $']];
  for(const school of schools){
   const cr=rs.filter(r=>r.school===school).sort((a,b)=>String(a.date).localeCompare(String(b.date))||String(a.student).localeCompare(String(b.student),'es'));
-  const mv=ps.filter(x=>x.school===school).sort((a,b)=>String(a.date).localeCompare(String(b.date)));
-  const gross=cr.reduce((v,r)=>v+row(r).netToSchool,0);
-  const paidIn=mv.filter(x=>x.direction==='teacher_to_school').reduce((v,x)=>v+Number(x.amount||0),0);
-  const paidOut=mv.filter(x=>x.direction==='school_to_teacher').reduce((v,x)=>v+Number(x.amount||0),0);
-  const net=gross-paidIn+paidOut;
-  const who=net>0?'INSTRUCTOR A ESCUELA':net<0?'ESCUELA A INSTRUCTOR':'SALDADA';
-  const commission=cr.reduce((v,r)=>v+Number(r.instructorShare||0),0);
-  summary.push([school,who,Math.abs(net)]);
-  const rows=[['CUENTA · '+school],['Instructor',teacher],['Mes',month],[],['SALDO FINAL','QUIÉN PAGA','IMPORTE'],['',who,Math.abs(net)],[],['RESUMEN DE LA ESCUELA'],['Cursos asignados',cr.length],['Comisiones del instructor',commission],['Instructor entregó a escuela',paidIn],['Escuela pagó al instructor',paidOut],[],['CURSOS DE ESTA AUTOESCUELA'],['FECHA / ALUMNO','CURSO','COMISIÓN']];
-  for(const r of cr){
-   const c=row(r),parent=db.records.find(z=>String(z.id)===String(r.recordId||r.id))||r;
-   const balance=Number(c.netToSchool||0);
-   const balanceWho=balance>0?'Instructor a escuela':balance<0?'Escuela a instructor':'Saldado';
-   rows.push([String(r.date||'')+' · '+String(r.student||''),r.originalCourse||r.course,Number(r.instructorShare||0)]);
-   rows.push(['Precio del curso',Number(r.originalPrice??parent.price??r.price??0),'Referencia, no sumar en transferencias']);
-   rows.push(['Seña recibida por escuela',Number(parent.deposit||0),'Referencia del curso completo']);
-   rows.push(['Dinero a cobrar por instructor',Number(c.instructorHeld||0),'Puede estar pendiente del alumno']);
-   rows.push(['Resultado de este curso',balanceWho,Math.abs(balance)]);
-   rows.push([]);
-  }
-  if(!cr.length)rows.push(['Sin cursos en este período']);
-  rows.push(['MOVIMIENTOS REGISTRADOS'],['FECHA','QUIÉN PAGÓ','IMPORTE']);
-  for(const m of mv)rows.push([m.date,m.direction==='teacher_to_school'?'Instructor a escuela':'Escuela a instructor',Number(m.amount||0)]);
-  if(!mv.length)rows.push(['Sin movimientos registrados']);
-  rows.push([],['RESULTADO FINAL','QUIÉN PAGA','IMPORTE'],['',who,Math.abs(net)],[],['Los saldos incluyen cursos activos aunque el alumno aún deba dinero.'],['Cada autoescuela se liquida por separado.']);
-  sheets.push({name:school.slice(0,31),rows});
+  const mv=ps.filter(p=>p.school===school);
+  const paidIn=mv.filter(p=>p.direction==='teacher_to_school').reduce((n,p)=>n+Number(p.amount||0),0);
+  const paidOut=mv.filter(p=>p.direction==='school_to_teacher').reduce((n,p)=>n+Number(p.amount||0),0);
+  const gross=cr.reduce((n,r)=>n+row(r).netToSchool,0),net=gross-paidIn+paidOut;
+  const who=n=>n>0?'INSTRUCTOR A ESCUELA':n<0?'ESCUELA A INSTRUCTOR':'SALDADO';
+  summary.push([school,who(net),Math.abs(net)]);
+  const lines=[['AUTOESCUELA: '+school],['Instructor',teacher],['Mes',month],[],['ALUMNO','CURSO','FORMA DE PAGO','RESULTADO $']];
+  // Cada curso figura en una única fila. El signo se explica en la línea siguiente.
+  for(const r of cr){const value=row(r).netToSchool;lines.push([r.student||'Sin nombre',r.originalCourse||r.course,paymentLabel(r),who(value)+' · $'+Math.abs(value).toLocaleString('es-AR')]);}
+  if(!cr.length)lines.push(['Sin cursos en el período']);
+  lines.push([],['TOTAL CURSOS',cr.length,'',''],['RESULTADO DE CURSOS',who(gross),Math.abs(gross)],['PAGOS INSTRUCTOR A ESCUELA','',paidIn],['PAGOS ESCUELA A INSTRUCTOR','',paidOut],[],['TOTAL '+school,who(net),Math.abs(net)]);
+  sheets.push({name:school.slice(0,31),rows:lines});
  }
- summary.push([],['CÓMO LEER ESTA CUENTA'],['Cada fila corresponde a una autoescuela.'],['El importe indica cuánto debe pagar la parte indicada.'],['No se compensan saldos entre autoescuelas.'],['Abrí la pestaña de cada escuela para ver sus alumnos y cursos.']);
+ summary.push([],['Cada escuela tiene su propio saldo. No se compensan entre sí.'],['En cada hoja: alumno, curso, forma de pago y quién debe pagar.']);
  sheets.unshift({name:'Resumen',rows:summary});
  function xml(s){return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&apos;')}
  const enc=new TextEncoder(),bytes=t=>enc.encode(t);
  function sheetXml(rows){
-  const col=n=>{let a='';for(n++;n;n=Math.floor((n-1)/26))a=String.fromCharCode(65+(n-1)%26)+a;return a};
-  const data=rows.map((r,i)=>'<row r="'+(i+1)+'">'+r.map((v,j)=>{
-   if(v===null||v===undefined||v==='')return '';
-   const ref=col(j)+(i+1),style=(i===0?1:(typeof v==='number'?2:0));
-   if(typeof v==='number'&&Number.isFinite(v))return '<c r="'+ref+'" s="'+style+'"><v>'+v+'</v></c>';
-   let str=String(v);if(/^[=+\-@]/.test(str))str="'"+str;
-   return '<c r="'+ref+'" s="'+style+'" t="inlineStr"><is><t>'+xml(str)+'</t></is></c>';
-  }).join('')+'</row>').join('');
-  return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetViews><sheetView workbookViewId="0"/></sheetViews><sheetFormatPr defaultRowHeight="19"/><cols><col min="1" max="1" width="37" customWidth="1"/><col min="2" max="2" width="30" customWidth="1"/><col min="3" max="3" width="20" customWidth="1"/></cols><sheetData>'+data+'</sheetData></worksheet>';
+  const col=n=>String.fromCharCode(65+n);
+  const data=rows.map((r,i)=>{
+   const title=i===0||String(r[0]||'').startsWith('AUTOESCUELA:')||String(r[0]||'').startsWith('TOTAL ')||String(r[0]||'').startsWith('RESUMEN GENERAL');
+   const header=['ALUMNO','AUTOESCUELA'].includes(String(r[0]||''));
+   const cells=r.map((v,j)=>{
+    if(v===null||v===undefined||v==='')return '';
+    const ref=col(j)+(i+1),style=title?1:header?3:typeof v==='number'?2:0;
+    if(typeof v==='number'&&Number.isFinite(v))return '<c r="'+ref+'" s="'+style+'"><v>'+v+'</v></c>';
+    let str=String(v);if(/^[=+\-@]/.test(str))str="'"+str;
+    return '<c r="'+ref+'" s="'+style+'" t="inlineStr"><is><t>'+xml(str)+'</t></is></c>';
+   }).join('');
+   return '<row r="'+(i+1)+'" ht="'+(title?30:header?25:24)+'" customHeight="1">'+cells+'</row>';
+  }).join('');
+  return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetViews><sheetView workbookViewId="0" showGridLines="0"/></sheetViews><sheetFormatPr defaultRowHeight="24"/><cols><col min="1" max="1" width="35" customWidth="1"/><col min="2" max="2" width="25" customWidth="1"/><col min="3" max="3" width="28" customWidth="1"/><col min="4" max="4" width="19" customWidth="1"/></cols><sheetData>'+data+'</sheetData></worksheet>';
  }
  const entries={};
  entries['[Content_Types].xml']='<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>'+sheets.map((_,i)=>'<Override PartName="/xl/worksheets/sheet'+(i+1)+'.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>').join('')+'</Types>';
  entries['_rels/.rels']='<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>';
  entries['xl/workbook.xml']='<?xml version="1.0" encoding="UTF-8"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>'+sheets.map((sh,i)=>'<sheet name="'+xml(sh.name)+'" sheetId="'+(i+1)+'" r:id="rId'+(i+1)+'"/>').join('')+'</sheets></workbook>';
  entries['xl/_rels/workbook.xml.rels']='<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'+sheets.map((_,i)=>'<Relationship Id="rId'+(i+1)+'" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet'+(i+1)+'.xml"/>').join('')+'<Relationship Id="rId'+(sheets.length+1)+'" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>';
- entries['xl/styles.xml']='<?xml version="1.0" encoding="UTF-8"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="2"><font><sz val="11"/><name val="Aptos"/></font><font><b/><sz val="14"/><color rgb="FFFFFFFF"/><name val="Aptos"/></font></fonts><fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF193D66"/><bgColor indexed="64"/></patternFill></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="3"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1"/><xf numFmtId="3" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/></cellXfs></styleSheet>';
+ entries['xl/styles.xml']='<?xml version="1.0" encoding="UTF-8"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="3"><font><sz val="13"/><color rgb="FF18344D"/><name val="Aptos"/></font><font><b/><sz val="15"/><color rgb="FFFFFFFF"/><name val="Aptos"/></font><font><b/><sz val="13"/><color rgb="FF18344D"/><name val="Aptos"/></font></fonts><fills count="4"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF1E4F7D"/><bgColor indexed="64"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FFDDECF2"/><bgColor indexed="64"/></patternFill></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="4"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1"/><xf numFmtId="3" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/><xf numFmtId="0" fontId="2" fillId="3" borderId="0" xfId="0" applyFont="1" applyFill="1"/></cellXfs></styleSheet>';
  sheets.forEach((sh,i)=>entries['xl/worksheets/sheet'+(i+1)+'.xml']=sheetXml(sh.rows));
  // ZIP sin dependencias externas: compatible con Excel, incluso sin conexión.
  const table=new Uint32Array(256);for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=c&1?0xEDB88320^(c>>>1):c>>>1;table[n]=c>>>0}
