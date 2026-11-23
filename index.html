@@ -472,6 +472,13 @@ if(days)$('availabilityCombined').value=days+(hours?' — '+hours:'');else if(ho
 const schedule=raw.match(/\b(?:lunes|martes|mi[eé]rcoles|jueves|viernes|s[aá]bados?|domingos?)\b[^\n]*(?:\n\s*(?:lunes|martes|mi[eé]rcoles|jueves|viernes|s[aá]bados?|domingos?)\b[^\n]*)*/i);
 if(schedule&&!days){const entries=schedule[0].split('\n').map(x=>x.trim()).filter(x=>/^(?:lunes|martes|mi[eé]rcoles|jueves|viernes|s[aá]bados?|domingos?)/i.test(x));$('availabilityCombined').value=entries.join(' / ')}
 else if(availability&&!days){$('availabilityCombined').value=availability.trim()}
+// Disponibilidad en mensajes compactos separados por / o //, sin etiqueta explícita.
+// Ejemplo: «auto x 5 efec $241.000/Toda la semana a la mañana».
+if(!$('availabilityCombined').value){
+ const timeWords=/(?:\b(?:lunes|martes|mi[eé]rcoles|jueves|viernes|s[aá]bados?|domingos?|semana|semanal|finde|fines?\s+de\s+semana|d[ií]as?\s+h[aá]biles|ma[ñn]ana|tarde|tardecita|noche|mediod[ií]a|horarios?|disponib(?:le|ilidad)|cualquier\s+d[ií]a|todos?\s+los?\s+d[ií]as?|todos?\s+los?\s+fines?|a\s+partir\s+de|despu[eé]s\s+de|antes\s+de|entre\s+las?)\b|\b\d{1,2}(?::\d{2})?\s*(?:hs?\b|horas?\b)|\b(?:de|desde)\s+\d{1,2}\s+a\s+\d{1,2}\b)/i;
+ const candidates=segments.filter((part,i)=>i>0 && timeWords.test(part) && !/^(?:sebasti[aá]n|instructor|autoescuela|escuela|central cars|club del manejo)\b/i.test(part) && !/^(?:auto|manual|autom[aá]tic[oa]|moto|scooter|curso)\s*(?:x|×)\s*\d+/i.test(part) && !/\$\s*[\d.]+/.test(part) && !/^\+?\d{10,13}$/.test(part));
+ if(candidates.length)$('availabilityCombined').value=candidates[0].replace(/^(?:disp(?:onibilidad)?\s*[:\-]\s*)/i,'').trim();
+}
 if(!$('availabilityCombined').value)warnings.push('Revisá disponibilidad');else if(/\bvairado\b/i.test($('availabilityCombined').value))$('availabilityCombined').value=$('availabilityCombined').value.replace(/\bvairado\b/ig,'Variado');
 const amount=v=>{const cleaned=String(v).replace(/\./g,'').replace(/,/g,'');const num=Number(cleaned);return num>0&&num<1000?num*1000:num};
 const deposit=raw.match(/(?:se[ñn][aoó]|reserva|abon[oó])\s*(?:recibida|de|por|:|\$|\s)*\s*([\d.]+)/i);
@@ -645,9 +652,8 @@ function instructorWhatsAppMessage(r,t){
  const cleaned=cleanInstructorStudentFields(r);
  const availability=cleaned.availability||'A coordinar';
  const lines=[
-  '🚘 *NUEVO ALUMNO ASIGNADO*',
-  '━━━━━━━━━━━━━━━━',
-  '🏫 *AUTOESCUELA*',r.school,
+  '🚘 *CURSO ASIGNADO*',
+  '🏫 *'+r.school+'*',
   '',
   '👤 *DATOS DEL ALUMNO*',
   '*Nombre:* '+cleaned.student,
@@ -655,11 +661,11 @@ function instructorWhatsAppMessage(r,t){
   '*Dirección:* '+(cleaned.address||'No informada'),
   '*Disponibilidad:* '+availability,
   '',
-  '🚗 *CURSO CONTRATADO*',
+  '🚗 *INFORMACIÓN DEL CURSO*',
   ...(transferred?['*Este curso es a completar. Lo tenía otro instructor.*','','*CURSO A COMPLETAR: '+(/moto/i.test(r.course)?'MOTO':/autom[aá]tico/i.test(r.course)?'AUTO AUTOMÁTICO':'AUTO MANUAL')+' X '+hours+' '+(hours===1?'CLASE':'CLASES')+'*']:['*Curso:* '+r.course,...(r.motoVehicle?['*MOTO PARA LAS CLASES:* '+r.motoVehicle]:[]),'*Instructor:* '+t.name,'*CLASES ASIGNADAS: '+hours+'*']),
   ...(transferred&&r.motoVehicle?['*MOTO PARA LAS CLASES:* '+r.motoVehicle]:[]),
   '',
-  '💰 *COBRO DEL CURSO*'
+  '💰 *ESTADO DEL PAGO*'
  ];
  if(paidFull){
   lines.push('✅ *PAGADO COMPLETAMENTE*','El alumno abonó el curso a la autoescuela.','','⛔ *NO COBRAR NADA AL ALUMNO.*');
@@ -667,15 +673,10 @@ function instructorWhatsAppMessage(r,t){
   const installments=r.paymentPlan.installments||[];
   lines.push('*PAGO EN DOS MITADES*','*Primera clase:* '+money(installments[0]?.amount||0),'*Tercera clase:* '+money(installments[1]?.amount||0),'*Responsable del cobro:* '+(r.paymentPlan.payer==='escuela'?'AUTOESCUELA':'INSTRUCTOR'),'Confirmar las cuotas ya abonadas antes de cobrar.');
  }else{
-  const collect=transferred?transferCollectText(r,assignment||{}):null;
-  if(transferred){
-   lines.push('*PAGO EN EFECTIVO*','*Indicación de cobro:* '+collect);
-  }else{
-   if(Number(r.deposit||0)>0)lines.push('*Precio total:* '+money(r.price),'*Seña recibida por la escuela:* '+money(r.deposit));
-   lines.push('*TOTAL A COBRAR AL ALUMNO: '+money(due)+'*','*Responsable del cobro:* INSTRUCTOR — EFECTIVO');
-  }
+  const collect=transferred?transferCollectText(r,assignment||{}):(Number(r.deposit||0)>0?'COBRAR SALDO PENDIENTE: ':'COBRAR TOTAL DEL CURSO: ')+money(due);
+  lines.push('*'+(due===0?'PAGADO COMPLETAMENTE':'PAGO EN EFECTIVO')+'*','*Indicación de cobro:* '+collect);
  }
- lines.push('','📲 *IMPORTANTE*','⏰ *Contactá al alumno dentro de las próximas 12 hs* para coordinar el inicio de sus clases.');
+ lines.push('','📲 *IMPORTANTE*','Contactá al alumno dentro de las próximas 12 horas para coordinar sus clases.');
  return lines.join('\n');
 }
 function sendInstructorCourse(r,t){
