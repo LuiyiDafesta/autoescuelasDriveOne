@@ -89,6 +89,98 @@ label{color:#344b67;font-size:12px;font-weight:750;letter-spacing:.01em}input,se
 .tariff-card-actions button{flex:1;min-width:0}
 @media(max-width:450px){.tariff-card{padding:14px}.tariff-value strong{font-size:15px}.tariff-catalog{grid-template-columns:minmax(0,1fr)}}
 </style>
+<style>
+/* Renovación visual exclusivamente CSS: navegación superior y funciones intactas */
+:root{--ui-navy:#132c49;--ui-teal:#087e82;--ui-line:#dce6ef;--ui-muted:#64778c}
+body{background:linear-gradient(180deg,#eaf1f7 0,#f5f8fb 300px,#f5f8fb 100%);color:#1a334b}
+.header{background:linear-gradient(115deg,#10263f 0%,#1a4563 100%);border-bottom:3px solid #18a2a0;box-shadow:0 7px 24px #102f4d18}
+.header h1{letter-spacing:-.65px}
+.brand-mark{box-shadow:inset 0 0 0 1px #ffffff24,0 5px 16px #071d3050}
+.wrap{max-width:1180px}
+/* Las siete pestañas originales permanecen ARRIBA, visibles y desplazables */
+.nav{position:sticky;top:0;z-index:25;background:#ffffffed;backdrop-filter:blur(12px);border:1px solid #d5e3ec;border-radius:15px;box-shadow:0 8px 26px #1a3b5918;padding:7px;gap:5px;scrollbar-color:#aabcca transparent}
+.nav button,.nav button.alt{font-weight:750;letter-spacing:-.1px;border-radius:10px;transition:background .15s,color .15s,box-shadow .15s}
+.nav button.active{background:linear-gradient(125deg,#087b83,#08636d);color:#fff;box-shadow:0 3px 10px #087b8340}
+.nav button.alt:hover{background:#edf4f8;color:#163c59}
+.card{border:1px solid var(--ui-line);border-radius:19px;box-shadow:0 5px 22px #153b5710;background:#fff}
+.card h2{font-size:20px;font-weight:800;letter-spacing:-.45px;color:#173754}
+.card h2:after{content:'';display:block;width:37px;height:3px;border-radius:8px;background:#169c9c;margin-top:9px}
+.section-hint,.muted{color:var(--ui-muted)}
+.intro{background:linear-gradient(115deg,#123451 0%,#1d6071 100%);border:1px solid #ffffff20;box-shadow:0 10px 28px #133f5a25;border-radius:21px}
+.intro h2{letter-spacing:-.7px}
+.quicklinks{gap:12px}
+.quicklinks button{background:#fff;color:#173c59;border:1px solid #dbe7ee;box-shadow:0 4px 15px #183d5b0e;border-radius:16px;transition:transform .15s,box-shadow .15s}
+.quicklinks button:hover{transform:translateY(-2px);box-shadow:0 8px 22px #183d5b1c}
+.quicklinks button span{color:#607b8c}
+.stat{border:1px solid #dce8ef;border-radius:16px;background:linear-gradient(145deg,#fff,#f1f7fa);box-shadow:0 4px 13px #1b40590a}
+.stat b{font-size:clamp(19px,2.5vw,26px);letter-spacing:-.55px;color:#123a58}
+.course-item,.account-course-card,.tariff-card{border:1px solid #dce6ef!important;border-radius:16px!important;box-shadow:0 4px 14px #1a3b540b!important;background:#fff}
+.course-item:hover,.account-course-card:hover,.tariff-card:hover{border-color:#b9d7df!important}
+input,select,textarea{background:#fff!important;border-color:#cbd9e4!important;box-shadow:0 1px 2px #102c4305}
+input:focus,select:focus,textarea:focus{outline:2px solid #0e8c9033;outline-offset:1px;border-color:#0e8c90!important}
+button{transition:filter .15s,transform .15s}
+button:not(.alt):not(.danger):hover{filter:brightness(1.07)}
+button:focus-visible,a:focus-visible{outline:3px solid #3ca7ad;outline-offset:3px}
+.tablewrap{border-radius:12px;border:1px solid #e0e9f0}
+th{background:#eff5f9;color:#28455d;font-weight:750}
+tbody tr:nth-child(even){background:#fbfdfe}
+.notice{border-radius:12px;border-color:#efdba8;background:#fff9eb}
+@media(max-width:720px){
+ .header{padding:16px 14px}.wrap{padding:12px 11px 52px}
+ .nav{top:0;margin:10px 0 15px;padding:6px;border-radius:12px;gap:4px}
+ .nav button,.nav button.alt{min-height:43px;padding:10px 12px;font-size:12px}
+ .card{padding:16px;border-radius:16px}
+ .intro{padding:21px 17px;border-radius:17px}
+ .quicklinks{gap:9px}.quicklinks button{border-radius:13px}
+ .stat{padding:13px;border-radius:13px}.stat b{font-size:19px}
+}
+</style>
+<style>
+/* Rediseño de fichas y cuentas: solo presentación, sin tocar cálculos ni navegación */
+.course-card-list,.account-course-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,390px),1fr));gap:15px;align-items:start}
+.course-item{position:relative;overflow:hidden;padding:19px!important;margin:0!important;border:1px solid #d9e5ed!important;border-top:4px solid #168c91!important;border-radius:18px!important;background:#fff!important;box-shadow:0 7px 22px #163b5710!important}
+.course-item-head{display:flex;align-items:flex-start;gap:11px;padding-bottom:13px;border-bottom:1px solid #e7edf3;margin-bottom:13px}
+.course-item-name{font-size:clamp(17px,2.4vw,21px)!important;font-weight:850!important;color:#123b59;letter-spacing:-.4px;line-height:1.25;margin-bottom:7px}
+.course-item .pill{display:inline-flex;align-items:center;border-radius:999px;padding:5px 10px;font-size:11px;letter-spacing:.15px;background:#e8f6f1;color:#136c61}
+.course-item-details{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px!important;margin:12px 0 16px!important}
+.course-item-details>div{background:#f5f8fb;border:1px solid #edf1f5;border-radius:11px;padding:10px 11px;min-width:0;overflow-wrap:anywhere;font-size:13px;color:#1c4059;line-height:1.45}
+.course-item-details>div span{display:block;font-size:11px!important;font-weight:700;color:#667e90;margin-bottom:5px;letter-spacing:.1px}
+.course-item-details>div strong{font-weight:800;color:#173d59}
+.course-item-details>div a{color:#087e83;font-weight:750}
+.course-actions{display:flex;flex-wrap:wrap;gap:8px!important;padding-top:12px;border-top:1px solid #e7edf3;margin-top:12px}
+.course-actions button{min-height:40px;padding:9px 12px!important;border-radius:10px!important;font-size:12px!important;font-weight:750;flex:1 1 auto}
+.course-actions button.danger{background:#fff1f0!important;color:#a73835!important;border:1px solid #f3d6d4!important}
+.course-actions button.send-instructor{background:#e4f5f1!important;color:#126b60!important}
+.teacher-directory-card{border:1px solid #dce7ef!important;border-radius:16px!important;overflow:hidden;box-shadow:0 4px 14px #153b5610;background:white}
+.teacher-directory-card>button{min-height:65px!important;padding:15px!important}
+.teacher-directory-detail{padding:12px!important;background:#f7fafc}
+.teacher-school-group{background:#eaf2f8!important;color:#264963!important;border-radius:10px!important;padding:10px 12px!important;margin:10px 0!important;font-weight:800}
+.account-directory{gap:14px!important}
+.account-person{border:1px solid #d9e5ee!important;border-radius:17px!important;background:white!important;box-shadow:0 5px 18px #183d5510!important;padding:17px!important;transition:transform .15s,border-color .15s}
+.account-person:hover{border-color:#7db9c0!important;transform:translateY(-1px)}
+.account-person>strong{display:block;font-size:18px!important;color:#173b58;letter-spacing:-.3px;margin-bottom:5px}
+.account-person .person-meta{font-size:12px!important;color:#6b7f90}
+.account-person .person-line{display:block;margin-top:11px;padding:12px!important;background:#f1f7fa!important;border:1px solid #e1edf2;border-radius:11px;color:#35566c;font-size:13px;line-height:1.6}
+.account-person .person-line b{font-size:15px!important;color:#104c61}
+.account-person .person-cta{display:block;margin-top:13px;font-weight:800;color:#087d84!important}
+.account-course-card{border:1px solid #dbe7ef!important;border-left:4px solid #158b90!important;border-radius:16px!important;padding:17px!important;box-shadow:0 4px 16px #153b5710!important;background:#fff}
+.account-course-head{padding-bottom:12px;border-bottom:1px solid #e5edf2;margin-bottom:12px;gap:10px}
+.account-course-head strong{font-size:18px;color:#143c58;line-height:1.35}
+.account-course-label{font-size:10px!important;letter-spacing:1px!important;font-weight:850!important;color:#698195!important;margin-bottom:5px}
+.account-course-tag{border-radius:999px!important;background:#eaf4f7!important;color:#235b70!important;font-size:11px!important;padding:6px 10px!important}
+.account-course-card .muted{color:#627c8c}
+.transfer-focus{background:#eaf7f5!important;border:1px solid #cce8e4!important;border-radius:13px!important;padding:14px!important}
+.transfer-focus strong{color:#11646b!important;font-size:23px!important}
+@media(max-width:720px){
+ .course-card-list,.account-course-list{grid-template-columns:minmax(0,1fr);gap:12px}
+ .course-item{padding:15px!important}
+ .course-item-details{gap:7px!important}
+ .course-item-details>div{padding:10px 9px;font-size:12px}
+ .course-actions button{flex:1 1 calc(50% - 8px);min-width:0}
+ .course-actions button.send-instructor{flex-basis:100%}
+ .account-course-card{padding:14px!important}
+}
+</style>
 </head><body><header class="header"><div class="brand-mark" aria-hidden="true">🚘</div><div class="brand-copy"><h1>Control de Autoescuelas</h1><small>Panel de gestión · 4 autoescuelas</small></div><div class="brand-badge">GESTIÓN</div></header><main class="wrap"><div class="notice"><b>Importante · Datos locales:</b> los datos se guardan solo en este navegador/dispositivo. No hay base de datos online ni inicio de sesión. No cargues información sensible real hasta configurar el sistema seguro. Usá «Exportar respaldo» para conservar una copia.</div><nav class="nav"><button class="active" data-tab="panel">🏠 Inicio y balance</button><button class="alt" data-tab="cuentas">💰 Cuentas</button><button class="alt" data-tab="alta">➕ Inscribir</button><button class="alt" data-tab="cursos">📋 Cursos</button><button class="alt" data-tab="cancelados">🚫 Cursos cancelados</button><button class="alt" data-tab="instructores">👨‍🏫 Instructores</button><button class="alt" data-tab="config">⚙️ Ajustes</button></nav>
 <section id="panel" class="tab"><div class="intro"><div><div class="eyebrow">PANEL GENERAL</div><h2>Todo tu negocio, en orden.</h2><p>Ventas, cursos y cuentas corrientes, en un solo lugar.</p></div><button type="button" data-tab="alta">＋ Nueva inscripción</button></div><div class="quicklinks"><button type="button" data-tab="cursos">📋 Ver cursos<span>Transferir, cancelar o eliminar</span></button><button type="button" data-tab="cuentas">💰 Cuentas corrientes<span>Comisiones y movimientos</span></button><button type="button" data-tab="instructores">👨‍🏫 Instructores<span>Editar teléfonos y vehículos</span></button><button type="button" data-tab="config">⚙️ Tarifas y respaldo<span>Precios y copia de seguridad</span></button></div><div class="card"><h2>Resumen económico</h2><p class="section-hint">Elegí el mes y la autoescuela para ver los resultados proyectados.</p><div class="grid"><div class="field"><label>Mes</label><input id="filterMonth" type="month"></div><div class="field"><label>Autoescuela</label><select id="filterSchool"></select></div></div></div><div class="grid4" id="stats"></div><div class="card"><h2>Detalle de liquidaciones</h2><div id="liquidations" class="tablewrap"></div><p class="muted">Balance proyectado: todos los cursos cargados cuentan como si estuvieran cobrados, aunque el alumno todavía no haya pagado. No representa efectivo disponible. Los cargos de Mercado Pago deben revisarse por separado.</p></div></section>
 <section id="cuentas" class="tab hidden"><div class="card"><h2>Cuenta corriente de instructores</h2><p class="muted">Buscá un instructor y tocá su ficha. Vas a ver sus cursos y saldos separados por autoescuela.</p><div class="field" style="margin:14px 0"><label for="accountSearch">Buscar instructor</label><input id="accountSearch" placeholder="Escribí el nombre del instructor..." autocomplete="off"></div><div id="accountDirectory" class="account-directory"></div><h3 id="accountDetailHeading">Detalle de cuenta y movimientos</h3><p class="muted">Seleccioná una ficha arriba para abrir el detalle. También podés usar los filtros siguientes.</p><p class="muted">Seleccioná el mes, la autoescuela y el instructor. Registrá cada transferencia o entrega de efectivo. Los importes son proyectados sobre todos los cursos, incluso sin cobrar: positivo indica saldo a favor de la escuela; negativo, saldo a favor del instructor. No equivale a dinero efectivamente disponible.</p><div class="grid3" id="accountDetailFilters"><div class="field"><label>Mes</label><input type="month" id="accountMonth"></div><div class="field"><label>Autoescuela</label><select id="accountSchool"></select></div><div class="field"><label>Instructor</label><select id="accountTeacher"></select></div></div><div id="accountSummary" style="margin-top:16px"></div><h3>Registrar pago o adelanto</h3><form id="paymentForm"><div class="grid3"><div class="field"><label>Fecha del movimiento</label><input id="paymentDate" type="date" required></div><div class="field"><label>Quién entrega el dinero</label><select id="paymentDirection"><option value="teacher_to_school">Instructor → autoescuela</option><option value="school_to_teacher">Autoescuela → instructor</option></select></div><div class="field"><label>Importe ($)</label><input id="paymentAmount" type="number" min="1" step="1" required></div><div class="field"><label>Concepto</label><select id="paymentType"><option>Liquidación parcial</option><option>Liquidación final</option><option>Adelanto</option><option>Ajuste</option></select></div><div class="field"><label>Medio</label><select id="paymentMethod"><option>Transferencia</option><option>Efectivo</option><option>Otro</option></select></div><div class="field"><label>Observaciones / comprobante</label><input id="paymentNotes" placeholder="Referencia opcional"></div></div><div class="actions"><button type="submit">Guardar movimiento</button><button type="button" class="alt" id="exportAccount">⬇ Exportar cuenta CSV</button></div></form><h3>Movimientos registrados</h3><div id="paymentHistory" class="tablewrap"></div><p class="muted">La liquidación se proyecta desde el momento de inscribir al alumno, independientemente de su estado de cobro. Se calcula según quién haya cobrado el saldo: si cobra el instructor, entrega la parte de la escuela descontando la seña; si cobra la escuela, paga la comisión del instructor. Los pagos se imputan al mes elegido, aunque su fecha sea posterior.</p></div></section>
