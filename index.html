@@ -519,8 +519,7 @@ const message=[
 ]:[]),
 
 ...(!saved.paymentPlan&&!isCard?[
-'*Precio total:* '+money(saved.price),
-...(saved.deposit?['*Seña recibida por la escuela:* '+money(saved.deposit),'*TOTAL A COBRAR AL ALUMNO: '+money(Math.max(0,saved.price-saved.deposit))+'*']:['*TOTAL A COBRAR AL ALUMNO: '+money(saved.price)+'*']),
+...(saved.deposit?['*Precio total:* '+money(saved.price),['*Seña recibida por la escuela:* '+money(saved.deposit),'*TOTAL A COBRAR AL ALUMNO: '+money(Math.max(0,saved.price-saved.deposit))+'*']:['*TOTAL A COBRAR AL ALUMNO: '+money(saved.price)+'*']),
 '*Responsable del cobro:* INSTRUCTOR — EFECTIVO'
 ]:saved.paymentPlan?[]:['*Pago con tarjeta a la autoescuela.*','⚠️ *NO COBRAR AL ALUMNO.*']),'',
 ...(showObservation?['📝 *OBSERVACIONES*',observation,'']:[]),
