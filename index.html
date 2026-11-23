@@ -923,7 +923,7 @@ function exportAccountXlsx(){
   const fn=bytes(name),data=bytes(content),crc=crc32(data);
   const local=new Uint8Array([80,75,3,4,20,0,0,8,0,0,0,0,0,0,...u32(crc),...u32(data.length),...u32(data.length),...u16(fn.length),0,0,...fn]);
   parts.push(local,data);
-  central.push(new Uint8Array([80,75,1,2,20,0,20,0,0,8,0,0,0,0,0,0,...u32(crc),...u32(data.length),...u32(data.length),...u16(fn.length),0,0,0,0,0,0,0,0,0,0,...u32(offset),...fn]));
+  central.push(new Uint8Array([80,75,1,2,20,0,20,0,0,8,0,0,0,0,0,0,...u32(crc),...u32(data.length),...u32(data.length),...u16(fn.length),0,0,0,0,0,0,0,0,0,0,0,0,...u32(offset),...fn]));
   offset+=local.length+data.length;
  }
  const centralSize=central.reduce((v,x)=>v+x.length,0),end=new Uint8Array([80,75,5,6,0,0,0,0,...u16(central.length),...u16(central.length),...u32(centralSize),...u32(offset),0,0]);
