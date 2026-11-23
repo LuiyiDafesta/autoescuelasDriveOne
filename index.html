@@ -904,14 +904,29 @@ function instructorExcelSheets(records,payments,teacher,month,selectedSchool){
  const paid=payments.filter(p=>p.direction==='school_to_teacher').reduce((v,p)=>v+num(p.amount),0);
  const net=round(grossNet-delivered+paid);
  const moneyText=v=>Math.abs(round(v)).toLocaleString('es-AR',{maximumFractionDigits:2});
- const rows=[['CUENTA CORRIENTE · '+teacher],['Mes',month],[],
+ const rows=[['LIQUIDACIÓN · '+teacher+' · '+monthLabelForSheet(month)],['Mes',month],[],
   ['CURSO COMPLETO','FORMA DE PAGO','CANTIDAD','SEÑAS EN ESCUELA ($)','COMISIÓN AUTOESCUELA ($)','COMISIÓN INSTRUCTOR ($)','LIQUIDACIÓN DEL CURSO'],
   ...gs.map(g=>[g.course,g.method,g.qty,round(g.deposit),round(g.gain),round(g.commission),g.net>0?'INSTRUCTOR ENTREGA $'+moneyText(g.net):g.net<0?'ESCUELA PAGA $'+moneyText(g.net):'SALDADO']),
   ['TOTAL DE CURSOS','',sum('qty'),sum('deposit'),sum('gain'),sum('commission'),''],
   [],['RESULTADO FINAL NETO DEL INSTRUCTOR'],
   ['QUIÉN DEBE PAGAR',net>0?'INSTRUCTOR DEBE ENTREGAR':net<0?'DEBEN PAGAR AL INSTRUCTOR':'CUENTA SALDADA'],
   ['IMPORTE NETO A LIQUIDAR','','','','','',Math.abs(net)]];
- return [{name:'Cuenta del instructor',rows}];
+ const tabName=liquidacionTabName(teacher,month);
+ return [{name:tabName,rows}];
+}
+function monthLabelForSheet(month){
+ const [year,number]=String(month||'').split('-');
+ const names=['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+ return names[Number(number)-1]&&/^\d{4}$/.test(year)?names[Number(number)-1]+' '+year:String(month||'');
+}
+function liquidacionTabName(teacher,month){
+ const [year,n]=String(month||'').split('-');
+ const short=['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'][Number(n)-1]||'';
+ const suffix=(short?short+' ':'')+(year||'');
+ const cleaned=String(teacher||'Instructor').replace(/^\s*(?:#?\d+\s*[-–—.]\s*)/,'').replace(/[\[\]\/:*?\\]/g,'').trim();
+ const prefix='Liquidación ';
+ const allowed=Math.max(1,31-prefix.length-suffix.length-1);
+ return (prefix+cleaned.slice(0,allowed).trim()+' '+suffix).slice(0,31);
 }
 function exportAccountXlsx(){
  const records=accountRecords(),payments=accountPayments(),month=$('accountMonth').value;
@@ -1029,8 +1044,8 @@ function exportGroupedXlsx(sheets,filename){
  function xml(s){return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&apos;')}
  const enc=new TextEncoder(),bytes=t=>enc.encode(t);
  function sheetXml(rows, sheetName){
-  const instructorSheet=sheetName!=='Cuenta del instructor'&&sheetName!=='Resumen'&&sheetName!=='Balance por cursos'&&sheetName!=='Liquidaciones por escuela'&&rows.some(r=>r[0]==='CURSO COMPLETO');
-  const instructorSummary=(sheetName==='Resumen'||sheetName==='Cuenta del instructor')&&rows.some(r=>String(r[0]||'').startsWith('CUENTA '));
+  const instructorSheet=!sheetName.startsWith('Liquidación ')&&sheetName!=='Cuenta del instructor'&&sheetName!=='Resumen'&&sheetName!=='Balance por cursos'&&sheetName!=='Liquidaciones por escuela'&&rows.some(r=>r[0]==='CURSO COMPLETO');
+  const instructorSummary=(sheetName==='Resumen'||sheetName==='Cuenta del instructor'||sheetName.startsWith('Liquidación '))&&rows.some(r=>/^(CUENTA |LIQUIDACIÓN ·)/.test(String(r[0]||'')));
   const balance=sheetName==='Balance por cursos'||instructorSheet||instructorSummary;
   const col=n=>{let x=n+1,out='';while(x){x--;out=String.fromCharCode(65+x%26)+out;x=Math.floor(x/26)}return out};
   const data=rows.map((r,i)=>{
