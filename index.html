@@ -958,16 +958,18 @@ function exportGeneralBalanceXlsx(){
  const dueSchool=rounded([...balances.values()].reduce((n,v)=>n+Math.max(0,v),0));
  const dueTeachers=rounded([...balances.values()].reduce((n,v)=>n+Math.max(0,-v),0));
  const period=month||'Todos los meses';
+ const netGlobal=rounded(dueSchool-dueTeachers);
+ const netPayer=netGlobal>0?'INSTRUCTORES → AUTOESCUELAS':netGlobal<0?'AUTOESCUELAS → INSTRUCTORES':'SIN DEUDAS NETAS';
  const rows=[
   ['BALANCE GENERAL · CURSOS VENDIDOS'],['Período',period],['Forma de pago',mode==='todos'?'Efectivo + Tarjeta':mode],[],
-  ['CURSO','FORMA DE PAGO','CANTIDAD','SEÑAS EN ESCUELA','COMISIÓN AUTOESCUELA','COMISIÓN INSTRUCTOR','LIQUIDACIÓN DEL CURSO'],
+  ['CURSO COMPLETO','PAGO','CANTIDAD','SEÑAS RECIBIDAS','COMISIÓN AUTOESCUELA','COMISIÓN INSTRUCTOR','QUIÉN PAGA Y CUÁNTO'],
   ...gs.map(g=>[g.course,g.method,g.quantity,rounded(g.deposit),rounded(g.gain),rounded(g.commission),
     g.settlement>0?'INSTRUCTOR ENTREGA $'+Math.round(g.settlement).toLocaleString('es-AR'):
     g.settlement<0?'ESCUELA PAGA $'+Math.round(-g.settlement).toLocaleString('es-AR'):'SALDADO']),
   [],['TOTAL DE CURSOS','',sum('quantity'),sum('deposit'),sum('gain'),sum('commission'),''],
-  [],['SALDOS PENDIENTES DE PAGO'],
-  ['INSTRUCTORES DEBEN ENTREGAR A ESCUELAS','','','','','',dueSchool],
-  ['ESCUELAS DEBEN PAGAR A INSTRUCTORES','','','','','',dueTeachers]
+  [],['RESULTADO FINAL NETO DEL BALANCE'],
+  ['QUIÉN DEBE PAGAR',netPayer],
+  ['IMPORTE NETO A LIQUIDAR','','','','','',Math.abs(netGlobal)]
  ];
  if(!gs.length)rows.splice(5,0,['Sin cursos para el período y forma de pago elegidos']);
  const schoolRows=[['LIQUIDACIONES POR AUTOESCUELA'],['Período',period],[],['AUTOESCUELA','CURSOS','VENTAS $','SEÑAS EN ESCUELA $','COMISIÓN INSTRUCTOR $','COMISIÓN AUTOESCUELA $','INSTRUCTOR ENTREGA $','ESCUELA PAGA $']];
@@ -988,7 +990,7 @@ function exportGroupedXlsx(sheets,filename){
    const label=String(r[0]||'');
    const title=i===0||label.startsWith('AUTOESCUELA:')||label.startsWith('SALDOS PENDIENTES')||label.startsWith('TOTAL ');
    const header=['CURSO','AUTOESCUELA','CURSO COMPLETO'].includes(label);
-   const outcome=balance&&(label==='INSTRUCTORES DEBEN ENTREGAR A ESCUELAS'||label==='ESCUELAS DEBEN PAGAR A INSTRUCTORES');
+   const outcome=balance&&(label==='QUIÉN DEBE PAGAR'||label==='IMPORTE NETO A LIQUIDAR');
    const cells=r.map((v,j)=>{
     if(v===null||v===undefined||v==='')return '';
     const ref=col(j)+(i+1);
@@ -996,8 +998,8 @@ function exportGroupedXlsx(sheets,filename){
     if(balance){
      if(title)style=1;
      else if(header)style=3;
-     else if(outcome)style=label.startsWith('INSTRUCTORES')?10:11;
-     else if(i>4&&i<rows.findIndex(x=>String(x[0]||'').startsWith('TOTALES'))){
+     else if(outcome)style=label==='IMPORTE NETO A LIQUIDAR'?10:9;
+     else if(i>4&&i<rows.findIndex(x=>String(x[0]||'')==='TOTAL DE CURSOS')){
       style=j===3?5:j===4?7:j===5?6:j===6?(String(v).startsWith('ESCUELA PAGA')?11:String(v).startsWith('INSTRUCTOR ENTREGA')?10:8):i%2===0?4:0;
      }
     }
@@ -1007,10 +1009,10 @@ function exportGroupedXlsx(sheets,filename){
    }).join('');
    return '<row r="'+(i+1)+'" ht="'+(title?33:header?43:outcome?38:31)+'" customHeight="1">'+cells+'</row>';
   }).join('');
-  const widths=balance?[34,16,13,24,26,26,35]:[38,20,21,22,22,22,26,26,26];
+  const widths=balance?[32,14,12,19,24,23,34]:[38,20,21,22,22,22,26,26,26];
   const cols=widths.map((w,i)=>'<col min="'+(i+1)+'" max="'+(i+1)+'" width="'+w+'" customWidth="1"/>').join('');
-  const merges=balance?'<mergeCells count="2"><mergeCell ref="A'+(rows.findIndex(r=>r[0]==='INSTRUCTORES DEBEN ENTREGAR A ESCUELAS')+1)+':F'+(rows.findIndex(r=>r[0]==='INSTRUCTORES DEBEN ENTREGAR A ESCUELAS')+1)+'"/><mergeCell ref="A'+(rows.findIndex(r=>r[0]==='ESCUELAS DEBEN PAGAR A INSTRUCTORES')+1)+':F'+(rows.findIndex(r=>r[0]==='ESCUELAS DEBEN PAGAR A INSTRUCTORES')+1)+'"/></mergeCells>':'';
-  return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetViews><sheetView workbookViewId="0" showGridLines="0"/></sheetViews><sheetFormatPr defaultRowHeight="27"/><cols>'+cols+'</cols><sheetData>'+data+'</sheetData>'+merges+'</worksheet>';
+  const merges=balance?(()=>{const i=rows.findIndex(r=>r[0]==='IMPORTE NETO A LIQUIDAR')+1;return i>0?'<mergeCells count="1"><mergeCell ref="A'+i+':F'+i+'"/></mergeCells>':''})():'';
+  return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetViews><sheetView workbookViewId="0" showGridLines="0"><pane ySplit="5" topLeftCell="A6" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews><sheetFormatPr defaultRowHeight="27"/><cols>'+cols+'</cols><sheetData>'+data+'</sheetData>'+merges+'</worksheet>';
  }
  const entries={};
  entries['[Content_Types].xml']='<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>'+sheets.map((_,i)=>'<Override PartName="/xl/worksheets/sheet'+(i+1)+'.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>').join('')+'</Types>';
