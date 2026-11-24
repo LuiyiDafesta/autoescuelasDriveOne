@@ -8,6 +8,15 @@
   "background_color": "#12233b",
   "theme_color": "#12233b",
   "lang": "es",
+  "share_target": {
+    "action": "./share",
+    "method": "GET",
+    "params": {
+      "text": "text",
+      "title": "title",
+      "url": "url"
+    }
+  },
   "icons": [
     {
       "src": "./driveone-192.png",

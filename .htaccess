@@ -1,0 +1,65 @@
+# ==============================================================================
+# DriveOne - Configuración Apache para Ferozo / DonWeb (Hosting Estático + PHP)
+# ==============================================================================
+
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteBase /
+
+  # Redireccionar a HTTPS si no está activado
+  RewriteCond %{HTTPS} off
+  RewriteCond %{HTTP_HOST} !^localhost
+  RewriteCond %{HTTP_HOST} !^127\.0\.0\.1
+  RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+
+  # No reescribir si el archivo, directorio o script PHP existe físicamente
+  RewriteCond %{REQUEST_FILENAME} -f [OR]
+  RewriteCond %{REQUEST_FILENAME} -d
+  RewriteRule ^ - [L]
+
+  # Manejo de PWA Share Target (/share?text=...)
+  RewriteRule ^share/?$ /index.html [L,QSA]
+
+  # Single Page Application: Redireccionar cualquier otra ruta a index.html
+  RewriteRule ^ index.html [L]
+</IfModule>
+
+# Tipos MIME para PWA, fuentes y scripts
+<IfModule mod_mime.c>
+  AddType application/manifest+json .webmanifest
+  AddType application/javascript .js
+  AddType text/css .css
+  AddType image/svg+xml .svg
+  AddType application/json .json
+</IfModule>
+
+# Compresión GZIP / DEFLATE para velocidad de carga
+<IfModule mod_deflate.c>
+  AddOutputFilterByType DEFLATE text/html text/plain text/xml text/css application/javascript application/json application/manifest+json image/svg+xml
+</IfModule>
+
+# Encabezados de caché
+<IfModule mod_expires.c>
+  ExpiresActive On
+  ExpiresDefault "access plus 1 month"
+
+  # Archivos HTML y PWA siempre frescos
+  ExpiresByType text/html "access plus 0 seconds"
+  ExpiresByType application/manifest+json "access plus 0 seconds"
+  ExpiresByType application/json "access plus 0 seconds"
+
+  # Assets versionados con hash por Vite
+  ExpiresByType text/css "access plus 1 year"
+  ExpiresByType application/javascript "access plus 1 year"
+  ExpiresByType image/png "access plus 1 year"
+  ExpiresByType image/svg+xml "access plus 1 year"
+</IfModule>
+
+# Bloquear acceso público al código fuente en _source/
+RedirectMatch 404 ^/_source/
+
+# Proteger archivos sensibles
+<FilesMatch "^\.">
+  Order allow,deny
+  Deny from all
+</FilesMatch>
