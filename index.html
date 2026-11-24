@@ -961,7 +961,7 @@ function exportAllInstructorsXlsx(){
  for(const [id,name] of [...people].sort((a,b)=>a[1].localeCompare(b[1],'es'))){
   const rs=records.filter(r=>String(r.teacherId||r.teacherName||'')===id),ps=payments.filter(p=>String(p.teacherId||p.teacherName||'')===id);
   const instructorSheets=instructorExcelSheets(rs,ps,name,month,'');
-  for(const sh of instructorSheets.slice(1)){
+  for(const sh of instructorSheets){
    const base=(name.slice(0,15)+' - '+sh.name.slice(0,13)).slice(0,31);
    let unique=base,i=2;while(used.has(unique)){unique=base.slice(0,27)+' '+i++;}used.add(unique);
    sheets.push({name:unique,rows:sh.rows});
@@ -985,8 +985,8 @@ function fullBalanceCourseName(raw){
  return c;
 }
 function exportGeneralBalanceXlsx(){
- const month=$('filterMonth').value,mode=$('balanceExportMode')?.value||'todos';
- const all=accountingRecords().filter(r=>(!month||String(r.date||'').startsWith(month))&&(mode==='todos'||paymentLabel(r)===mode));
+ const month=$('filterMonth').value,schoolFilter=$('filterSchool').value,mode=$('balanceExportMode')?.value||'todos';
+ const all=accountingRecords().filter(r=>(!month||String(r.date||'').startsWith(month))&&(!schoolFilter||r.school===schoolFilter)&&(mode==='todos'||paymentLabel(r)===mode));
  const num=x=>Number(x||0),rounded=x=>Math.round(x*100)/100;
  // Los tramos transferidos forman una única venta; se suman comisiones y señas una sola vez.
  const unique=new Map(),balances=new Map(),issues=[];
@@ -1017,13 +1017,12 @@ function exportGeneralBalanceXlsx(){
  }
  const gs=[...grouped.values()].sort((a,b)=>a.course.localeCompare(b.course,'es')||a.method.localeCompare(b.method,'es'));
  const sum=k=>rounded(gs.reduce((n,g)=>n+num(g[k]),0));
- const payments=db.payments.filter(p=>(!month||p.month===month));
+ const payments=db.payments.filter(p=>(!month||p.month===month)&&(!schoolFilter||p.school===schoolFilter));
  // Los movimientos sin referencia al curso no se pueden distribuir de forma segura entre
  // Efectivo y Tarjeta. Solo se aplican al balance combinado.
  if(mode==='todos')for(const p of payments){
   const k=String(p.school||'')+'|'+String(p.teacherId||p.teacherName||'');
-  if(!balances.has(k))continue;
-  balances.set(k,balances.get(k)+(p.direction==='teacher_to_school'?-num(p.amount):num(p.amount)));
+  balances.set(k,(balances.get(k)||0)+(p.direction==='teacher_to_school'?-num(p.amount):num(p.amount)));
  }
  const dueSchool=rounded([...balances.values()].reduce((n,v)=>n+Math.max(0,v),0));
  const dueTeachers=rounded([...balances.values()].reduce((n,v)=>n+Math.max(0,-v),0));
@@ -1031,7 +1030,7 @@ function exportGeneralBalanceXlsx(){
  const netGlobal=rounded(dueSchool-dueTeachers);
  const netPayer=netGlobal>0?'INSTRUCTORES → AUTOESCUELAS':netGlobal<0?'AUTOESCUELAS → INSTRUCTORES':'SIN DEUDAS NETAS';
  const rows=[
-  ['BALANCE GENERAL · CURSOS VENDIDOS'],['Período',period],['Forma de pago',mode==='todos'?'Efectivo + Tarjeta':mode],[],
+  ['BALANCE GENERAL · CURSOS VENDIDOS'],['Período',period],['Autoescuela',schoolFilter||'Todas'],['Forma de pago',mode==='todos'?'Efectivo + Tarjeta':mode],[],
   ['CURSO COMPLETO','PAGO','CANTIDAD','SEÑAS RECIBIDAS','COMISIÓN AUTOESCUELA','COMISIÓN INSTRUCTOR','QUIÉN PAGA Y CUÁNTO'],
   ...gs.map(g=>[g.course,g.method,g.quantity,rounded(g.deposit),rounded(g.gain),rounded(g.commission),
     g.settlement>0?'INSTRUCTOR ENTREGA $'+Math.round(g.settlement).toLocaleString('es-AR'):
@@ -1041,9 +1040,9 @@ function exportGeneralBalanceXlsx(){
   ['QUIÉN DEBE PAGAR',netPayer],
   ['IMPORTE NETO A LIQUIDAR','','','','','',Math.abs(netGlobal)]
  ];
- if(!gs.length)rows.splice(5,0,['Sin cursos para el período y forma de pago elegidos']);
- const schoolRows=[['LIQUIDACIONES POR AUTOESCUELA'],['Período',period],[],['AUTOESCUELA','CURSOS','VENTAS $','SEÑAS EN ESCUELA $','COMISIÓN INSTRUCTOR $','COMISIÓN AUTOESCUELA $','INSTRUCTOR ENTREGA $','ESCUELA PAGA $']];
- for(const school of SCHOOLS){
+ if(!gs.length)rows.splice(6,0,['Sin cursos para el período y forma de pago elegidos']);
+ const schoolRows=[['LIQUIDACIONES POR AUTOESCUELA'],['Período',period],['Autoescuela',schoolFilter||'Todas'],[],['AUTOESCUELA','CURSOS','VENTAS $','SEÑAS EN ESCUELA $','COMISIÓN INSTRUCTOR $','COMISIÓN AUTOESCUELA $','INSTRUCTOR ENTREGA $','ESCUELA PAGA $']];
+ for(const school of SCHOOLS.filter(s=>!schoolFilter||s===schoolFilter)){
   const rs=[...unique.values()].filter(x=>x.school===school);
   const schoolBalances=[...balances.entries()].filter(([k])=>k.startsWith(school+'|')).map(([,v])=>v);
   schoolRows.push([school,rs.length,rounded(rs.reduce((n,x)=>n+x.price,0)),rounded(rs.reduce((n,x)=>n+x.deposit,0)),rounded(rs.reduce((n,x)=>n+x.commission,0)),rounded(rs.reduce((n,x)=>n+x.gain,0)),rounded(schoolBalances.reduce((n,v)=>n+Math.max(0,v),0)),rounded(schoolBalances.reduce((n,v)=>n+Math.max(0,-v),0))]);
