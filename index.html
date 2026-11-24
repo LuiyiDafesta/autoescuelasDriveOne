@@ -1059,7 +1059,9 @@ function exportGeneralBalanceXlsx(){
   const schoolBalances=[...balances.entries()].filter(([k])=>k.startsWith(school+'|')).map(([,v])=>v);
   schoolRows.push([school,rs.length,rounded(rs.reduce((n,x)=>n+x.price,0)),rounded(rs.reduce((n,x)=>n+x.deposit,0)),rounded(rs.reduce((n,x)=>n+x.commission,0)),rounded(rs.reduce((n,x)=>n+x.gain,0)),rounded(schoolBalances.reduce((n,v)=>n+Math.max(0,v),0)),rounded(schoolBalances.reduce((n,v)=>n+Math.max(0,-v),0))]);
  }
- exportGroupedXlsx([{name:'Balance por cursos',rows}], 'Balance_'+(mode==='todos'?'Efectivo_y_Tarjeta':mode)+'_'+(month||'todos_los_meses')+'.xlsx');
+ const monthNames=['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+ const sheetPeriod=month?' '+monthNames[Number(month.slice(5,7))-1]+month.slice(0,4):' Todos';
+ exportGroupedXlsx([{name:'Liquidación Autoescuela'+sheetPeriod,rows}], 'Balance_'+(mode==='todos'?'Efectivo_y_Tarjeta':mode)+'_'+(month||'todos_los_meses')+'.xlsx');
 }
 function exportGroupedXlsx(sheets,filename){
  function xml(s){return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&apos;')}
@@ -1067,7 +1069,7 @@ function exportGroupedXlsx(sheets,filename){
  function sheetXml(rows, sheetName){
   const instructorSheet=!sheetName.startsWith('Liquidación ')&&sheetName!=='Cuenta del instructor'&&sheetName!=='Resumen'&&sheetName!=='Balance por cursos'&&sheetName!=='Liquidaciones por escuela'&&rows.some(r=>r[0]==='CURSO COMPLETO');
   const instructorSummary=(sheetName==='Resumen'||sheetName==='Cuenta del instructor'||sheetName.startsWith('Liquidación '))&&rows.some(r=>/^(CUENTA |LIQUIDACIÓN ·)/.test(String(r[0]||'')));
-  const balance=sheetName==='Balance por cursos'||instructorSheet||instructorSummary;
+  const balance=sheetName==='Balance por cursos'||sheetName.startsWith('Liquidación Autoescuela')||instructorSheet||instructorSummary;
   const col=n=>{let x=n+1,out='';while(x){x--;out=String.fromCharCode(65+x%26)+out;x=Math.floor(x/26)}return out};
   const data=rows.map((r,i)=>{
    const label=String(r[0]||'');
